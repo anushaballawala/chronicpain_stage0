@@ -13,7 +13,7 @@ sys.path.append("/home/aallawala/iEEG-GenFxns/Signal_proc")
 
 filepath = sys.argv[1] 
 # filepath = "/datastore_spirit/human/ChronicPain_NK/js_decoding/all_bipolar/RCS04/during_surv/fif/RCS04_951_eeg_raw.fif"
-ptID = 'RCS04'
+ptID = 'RCS07'
 # filepath = '/datastore_spirit/human/ChronicPain_NK/js_decoding/all_bipolar/%s/during_surv/fif/' % (ptID)
 # filename = '%s_869_eeg_raw.fif' % (ptID)
 # fullfile = filepath + filename
