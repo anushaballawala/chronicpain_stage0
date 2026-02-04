@@ -1,9 +1,4 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[1]:
-
-
+# %%
 ## try this with new data starting RCS02
 import h5py
 import numpy as np 
@@ -14,29 +9,21 @@ import sys
 from datetime import date
 import pandas as pd
 
-
-# In[3]:
-
-
+# %%
 sys.path.append("/home/jiahuang/test-code-hazel/gen-fxns/seeg-signal/Signal-proc/")
 # filepath = sys.argv[1] 
 ptID = 'RCS02'
 filepath = f"/userdata/rvatsyayan/AnushaData/HDF5 Pain Data/{ptID}/1.h5"
 from preproc_fxns import demean_signal
 
-
-# In[ ]:
-
-
+# %%
 # electrode_df = pd.DataFrame(f1['electrode_properties']).stack().str.decode('utf-8').unstack()
 # electrode_df_t = electrode_df.T
 # electrode_df_t['Lead Number'] = electrode_df_t[1]+electrode_df_t[2]
 # electrode_df_t.iloc[4]
 
 
-# In[7]:
-
-
+# %%
 f1 = h5py.File(filepath)
 srate = np.array(f1['frequency'])[0]
 num_ch = f1['electrode_properties'].shape[1]
@@ -79,15 +66,10 @@ print('shape of intracranial EEG')
 plot_data(intracranialEEG_data)
 
 
-# In[8]:
-
-
+# %%
 # len(ch_label)
 
-
-# In[9]:
-
-
+# %%
 from preproc_fxns import demean_signal, downsample_signal, butterworth_notch_filter
 
 ch_baseline_demean = demean_signal(intracranialEEG_data)
@@ -106,16 +88,10 @@ filt_data = butterworth_notch_filter(filt_data,order, notch_freqs[2], srate_new,
 filt_data = butterworth_notch_filter(filt_data,order, notch_freqs[3], srate_new, num_ch)
 # The filtered data is now stored in filt_data
 
-
-# In[ ]:
-
-
+# %%
 # ch_label[0]
 
-
-# In[11]:
-
-
+# %%
 import re
 import numpy as np
 
@@ -155,9 +131,7 @@ print("✅ rereference complete")
 
 
 
-# In[12]:
-
-
+# %%
 # convolve 
 num_frequencies = 48 #updated to capture more frequencies 11/06/2025
 min_freq = 1  # Hz
@@ -204,10 +178,7 @@ for i in range(num_frequencies):
                                          ftype='iir', 
                                          zero_phase=True)
 
-
-# In[82]:
-
-
+# %%
 from plot_preproc_channel import plot_all_channels
 save_dir = f"/userdata/jiahuang/pain-data/Stage1-test/{ptID}/biomarker/preproc_data/preproc_figs"
 
@@ -219,10 +190,7 @@ os.makedirs(save_dir, exist_ok=True)
 plot_all_channels(filt_data, reref_data, resampled_psd, 
                  freqs, ch_label, save_dir, channels_to_plot=range(2))
 
-
-# In[97]:
-
-
+# %%
 # save psd, mean, re-referenced data
 from scipy.stats import zscore
 psd_z = zscore(power_signal_array, axis=1)
@@ -231,7 +199,7 @@ median_psd = np.nanmedian(resampled_psd,axis =1)
 
 savepath = f"/userdata/jiahuang/pain-data/Stage1-test/{ptID}/biomarker/preproc_data/"
 
-h5_filename = filepath[-4] + "_wavelet.h5"
+h5_filename = re.findall(r"(\d+).h5", filepath)[0] + "_wavelet.h5"
 full_filename = savepath + h5_filename
 print(full_filename)
 ## save in h5 file 
@@ -241,7 +209,7 @@ hf = h5py.File(full_filename, 'w')
 hf.create_dataset('decomp_signal', data=resampled_psd)
 
 hf.attrs['description'] = 'data preprocessed: demean, downsample, notch filter, re-reference, PSD computed'
-hf.attrs['filename'] = filename
+hf.attrs['filename'] = full_filename
 hf.attrs['srate_new'] = srate_new
 hf.attrs['notch_freqs'] = notch_freqs
 hf.attrs['freqs'] = freqs
@@ -260,23 +228,12 @@ hf.close()
 print('wavelet data saved')
 
 
-# In[100]:
-
-
-## save in h5 file 
-directory, filename = os.path.split(filepath)
-filename_no_ext, ext = os.path.splitext(filename)
-meanpsd_filename = filename[-4] + '_meanpsd' + ".h5"
-print(savepath+meanpsd_filename)
-
-
-# In[101]:
-
+# %%
 
 ## save in h5 file 
 directory, filename = os.path.split(filepath)
 filename_no_ext, ext = os.path.splitext(filename)
-meanpsd_filename = filename[-4] + '_meanpsd' + ".h5"
+meanpsd_filename = re.findall(r"(\d+).h5", filepath)[0] + '_meanpsd' + ".h5"
 
 hf1 = h5py.File(savepath+meanpsd_filename, 'w')
 hf1.create_dataset('mean_psd', data=mean_psd)
@@ -300,12 +257,10 @@ hf1.attrs['date preprocessed'] = date_string
 hf1.close()
 print('mean psd data saved')
 
-
-# In[103]:
-
+# %%
 
 ## save re-referenced data in h5 file 
-reref_filename = filename[-4] + '_reref' + ".h5"
+reref_filename = re.findall(r"(\d+).h5", filepath)[0] + '_reref' + ".h5"
 
 hf1 = h5py.File(savepath+reref_filename, 'w')
 hf1.create_dataset('re-referenced', data=reref_data)
@@ -329,14 +284,12 @@ hf1.attrs['date preprocessed'] = date_string
 hf1.close()
 print('reref data saved')
 
-
-# In[76]:
-
-
+# %%
 import pickle 
 # pkl_fname = f"/userdata/aallawala/presidio_data/Stage1/{ptID}/biomarker/preproc_data/"
 pkl_fname = 'tmp' + '_stats_artifact' + '.pkl'
 
 with open(pkl_fname, 'wb') as handle:
     pickle.dump(stats_artifact, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
 
