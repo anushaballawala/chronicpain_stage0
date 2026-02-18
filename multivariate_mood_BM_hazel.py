@@ -41,7 +41,7 @@ import os
 # %%
 ptID = "RCS02" # patient ID
 path_string = f"/userdata/jiahuang/pain-data/Stage1-test/{ptID}/biomarker/preproc_data/all_channels/"
-pt_path = "/userdata/rvatsyayan/AnushaData/HDF5 Pain Data/RCS02"
+pt_path = f"/userdata/rvatsyayan/AnushaData/HDF5 Pain Data/{ptID}"
 data_root = Path(path_string)
 file_keyword = '_meanpsd'
 dataset_name = "mean_psd" # files with mean power spectral density 
@@ -72,11 +72,12 @@ def load_h5_files(path_string, pt_path, file_keyword, dataset_name):
 
     files = sorted(os.listdir(pt_path), key=extract_number)
     for filename in files:
-        with h5py.File(os.path.join(pt_path, filename), 'r') as hf:
-            # get record_id 
-            fileid = int(pd.DataFrame(hf['pain_info']).iloc[0,0])
-            fileids.append(fileid)
-    print(fileids)
+        if filename.endswith('.h5'):
+            with h5py.File(os.path.join(pt_path, filename), 'r') as hf:
+                # get record_id 
+                fileid = int(pd.DataFrame(hf['pain_info']).iloc[0,0])
+                fileids.append(fileid)
+    # print(fileids)
 
     return h5_arrays, fileids
 
@@ -186,7 +187,7 @@ def find_nans(array):
 
 nan_idx_vasd = find_nans(vasd_z)
 nan_idx_vasp = find_nans(vasp_z)
-nan_idx_all  = np.unique([nan_idx_vasd, nan_idx_vasp])
+nan_idx_all  = np.unique(np.concatenate([nan_idx_vasd, nan_idx_vasp]))
 print(nan_idx_all)
 # clean up surveys from nans. 
 vasd_z_clean = np.delete(vasd_z, [nan_idx_all], axis = 0)
@@ -197,6 +198,9 @@ new_surveys = new_surveys.drop(new_surveys.index[nan_idx_all], axis=0) # remove 
 clean_psd_z= np.delete(psd_z_vec, nan_idx_all, axis=1) #**** ?????
 print(clean_psd_z.shape)
 
+
+# %%
+new_surveys.shape
 
 # %%
 # flip depression scores (so that worse mood = higher mood score, to match worse pain = higher pain score)
@@ -211,19 +215,22 @@ vasd_z_clean_r = max_score + min_score - vasd_z_clean
 
 # %%
 # Dimension reduction of all_data
+clean_alldata = all_data[:,:,idx_missing_surveys]
+clean_alldata= np.delete(clean_alldata, nan_idx_all, axis=2)
+clean_alldata = clean_alldata[:,missing_channels,:]
+print(clean_alldata.shape)
+n_trials = clean_alldata.shape[2]
+
 band_data = np.zeros((6, n_ch, n_trials))
 bandref = {'delta':(1,4), 'theta':(5,8), 'alpha':(9,12), 'beta':(13,30), 'low gamma':(31,70), 'high gamma':(71,150)}
 bands = list(bandref.keys())
-clean_alldata = all_data[:,:,idx_missing_surveys]
-clean_alldata = clean_alldata[:,missing_channels,:]
-print(clean_alldata.shape)
 
 import re
 ch_labels = []
 freqs = []
 with h5py.File(f"{path_string}/1_meanpsd.h5", 'r') as hf:
     for i in missing_channels:
-        ch = re.findall(r"\d+([A-Z]+\d+)",str(hf.attrs['ch_labels'][i]))[0]
+        ch = re.findall(r"\d+([A-Za-z]+\d+)",str(hf.attrs['ch_labels'][i]))[0]
         ch_labels.append(ch)
     freqs = hf.attrs['freqs']
 canonical_freq = [bandref[bands[i]][0] for i in range(len(bands))]
@@ -235,7 +242,7 @@ for b in range(len(bands)):
     idxf = np.where((freqs >= fmin) & (freqs <= fmax))[0]
     band_data[b, :, :] = np.mean(clean_alldata[idxf, :, :], axis=0)
 
-large_ROI = np.unique([re.findall(r"[A-Z]+", s)[0] for s in ch_labels])
+large_ROI = np.unique([re.findall(r"[A-Za-z]+", s)[0] for s in ch_labels])
 ch_data = np.zeros((len(bands), len(large_ROI), n_trials))
 
 for i in range(len(large_ROI)):
@@ -243,8 +250,9 @@ for i in range(len(large_ROI)):
 	idxc = [ch in ch_name for ch_name in ch_labels]
 	ch_data[:,i,:] = np.mean(band_data[:, idxc, :], axis = 1)
 	
-all_data_clean_freq_band = zscore(ch_data, axis = 2)
-all_data_clean_freq_band_z = all_data_clean_freq_band.reshape(len(bands)*len(large_ROI), n_trials).T
+all_data_clean_freq_roi = zscore(ch_data, axis = 2)
+all_data_clean_freq_roi_z = all_data_clean_freq_roi.reshape(len(bands)*len(large_ROI), n_trials).T
+all_data_clean_freq_z = zscore(band_data, axis=2).reshape(len(bands)*len(ch_labels), n_trials).T
 
 print(ch_labels)
 print(large_ROI)
@@ -307,15 +315,23 @@ def run_corr(x,y, n_freq, n_ch):
     from scipy.stats import spearmanr
     corr,p_value = spearmanr(x,y)
     correlations = corr[:-1,-1]
+    p = p_value[:-1,-1].reshape(n_freq,n_ch)
     new_corr = correlations.reshape(n_freq,n_ch)
-    return new_corr
+    return new_corr, p
 
-corr_vasd = run_corr(clean_psd_z.T, vasd_z_clean_r, n_freq, n_ch)
-corr_vasd2 = run_corr(all_data_clean_freq_band_z, vasd_z_clean_r, len(bands), len(large_ROI))
-# corr_vasd = run_corr(clean_psd_z.T, vasd_z_clean, n_freq, n_ch)
+corr_vasd, p = run_corr(clean_psd_z.T, vasd_z_clean_r, n_freq, n_ch)
+corr_vasd_mask = np.where(p>0.05, np.nan, corr_vasd)
+corr_vasd2, p = run_corr(all_data_clean_freq_roi_z, vasd_z_clean_r, len(bands), len(large_ROI))
+corr_vasd2_mask = np.where(p>0.05, np.nan, corr_vasd2)
+corr_vasd3, p = run_corr(all_data_clean_freq_z, vasd_z_clean_r, len(bands), len(ch_labels))
+corr_vasd3_mask = np.where(p>0.05, np.nan, corr_vasd3)
 
-corr_vasp = run_corr(clean_psd_z.T, vasp_z_clean, n_freq, n_ch)
-corr_vasp2 = run_corr(all_data_clean_freq_band_z, vasp_z_clean, len(bands), len(large_ROI))
+corr_vasp, p2 = run_corr(clean_psd_z.T, vasp_z_clean, n_freq, n_ch)
+corr_vasp_mask = np.where(p2>0.05, np.nan, corr_vasp)
+corr_vasp2, p2 = run_corr(all_data_clean_freq_roi_z, vasp_z_clean, len(bands), len(large_ROI))
+corr_vasp2_mask = np.where(p2>0.05, np.nan, corr_vasp2)
+corr_vasp3, p2 = run_corr(all_data_clean_freq_z, vasp_z_clean, len(bands), len(ch_labels))
+corr_vasp3_mask = np.where(p2>0.05, np.nan, corr_vasp3)
 
 
 # %%
@@ -328,7 +344,8 @@ def basic_heatmap(ax, array, ch_labels, freqs, cbar_title, title):
     fig_params = [8, 12]
     caxis_lim = [-0.1, 0.2]
     
-    sns.heatmap((array.T), cmap="RdBu_r", cbar=True, 
+    sns.heatmap((array.T), cmap="RdBu_r", 
+                vmax = np.nanmax(np.abs(array)), vmin = -np.nanmax(np.abs(array)), center = 0,cbar=True,
                 yticklabels=ch_labels, xticklabels=np.round(freqs), 
                 cbar_kws={'label': cbar_title}, ax=ax)
     ax.set_xlabel("Frequency(Hz)")
@@ -357,14 +374,22 @@ def plot_heatmap_subplots(data_list, ch_labels, freqs, cbar_titles, titles, save
     plt.tight_layout()
     save_dir = f"/userdata/jiahuang/pain-data/figures/Stage1-test/{ptID}/{savetitle}"
 
-    plt.savefig(save_dir, dpi=300, edgecolor='k', facecolor="white")
+    # plt.savefig(save_dir, dpi=300, edgecolor='k', facecolor="white")
     plt.show()
 
 
 # Plot the heatmaps in a 2x2 grid
-plot_heatmap_subplots([corr_vasp, corr_vasd], ch_labels, freqs, ['Corr', 'Corr'], ['PSD vs Pain %s' % (ptID), 'PSD vs Mood %s' % (ptID)], "All chanel roi correlation", nrows=1, ncols=2)
+# plot_heatmap_subplots([corr_vasp, corr_vasd], ch_labels, freqs, ['Corr', 'Corr'], ['PSD vs Pain %s' % (ptID), 'PSD vs Mood %s' % (ptID)], "All chanel roi correlation", nrows=1, ncols=2)
 
-plot_heatmap_subplots([corr_vasp2, corr_vasd2], large_ROI, canonical_freq, ['Corr', 'Corr'], ['Concatenated PSD vs Pain %s' % (ptID), 'Concatenated PSD vs Mood %s' % (ptID)], "Canonical chanel roi correlation ", nrows=1, ncols=2)
+# plot_heatmap_subplots([corr_vasp2, corr_vasd2], large_ROI, canonical_freq, ['Corr', 'Corr'], ['Band+ROI Concatenated PSD vs Pain %s' % (ptID), 'Band+ROI Concatenated PSD vs Mood %s' % (ptID)], "Canonical chanel roi correlation ", nrows=1, ncols=2)
+
+# plot_heatmap_subplots([corr_vasp3, corr_vasd3], ch_labels, canonical_freq, ['Corr', 'Corr'], ['Only Band Concatenated PSD vs Pain %s' % (ptID), 'Only Band Concatenated PSD vs Mood %s' % (ptID)], "Canonical chanel roi correlation ", nrows=1, ncols=2)
+
+plot_heatmap_subplots([corr_vasp_mask, corr_vasd_mask], ch_labels, freqs, ['Corr', 'Corr'], ['PSD vs Pain %s' % (ptID), 'PSD vs Mood %s' % (ptID)], "All chanel roi correlation", nrows=1, ncols=2)
+
+plot_heatmap_subplots([corr_vasp2_mask, corr_vasd2_mask], large_ROI, canonical_freq, ['Corr', 'Corr'], ['Band+ROI Concatenated PSD vs Pain %s' % (ptID), 'Band+ROI Concatenated PSD vs Mood %s' % (ptID)], "Canonical chanel roi correlation ", nrows=1, ncols=2)
+
+plot_heatmap_subplots([corr_vasp3_mask, corr_vasd3_mask], ch_labels, canonical_freq, ['Corr', 'Corr'], ['Only Band Concatenated PSD vs Pain %s' % (ptID), 'Only Band Concatenated PSD vs Mood %s' % (ptID)], "Canonical chanel roi correlation ", nrows=1, ncols=2)
 
 
 # %%
@@ -408,65 +433,106 @@ from scipy import stats, linalg
 
 # Step 1: Fit regression models and obtain residuals
 # Regression of Y on Z
-n_feats = len(ch_labels)*len(freqs)
-X = clean_psd_z.T
+n_feats = [len(ch_labels)*len(freqs), len(large_ROI)*len(bands), len(ch_labels)*len(bands)]
+X1 = clean_psd_z.T
+X2 = all_data_clean_freq_roi_z
+X3 = all_data_clean_freq_z
+Xs = [X1, X2, X3]
+y_sticks = [ch_labels, large_ROI, ch_labels]
+x_sticks = [freqs, canonical_freq, canonical_freq]
 Yd = vasd_z_clean_r
 Yp = vasp_z_clean
 
 slope_YY, intercept_YY, _, _, _ = stats.linregress(Yd, Yp)
 Yp_pred = slope_YY * Yd + intercept_YY
 Y_resid = Yp - Yp_pred
+for i in range(len(Xs)):
+    X = Xs[i]
+    # Regression of each feature in X on Z
+    X_resid = np.zeros_like(X)
+    for j in range(n_feats[i]):
+        slope_XZ, intercept_XZ, _, _, _ = stats.linregress(Yd, X[:, j])
+        X_pred = slope_XZ * Yd + intercept_XZ
+        X_resid[:, j] = X[:, j] - X_pred
 
-# Regression of each feature in X on Z
-X_resid = np.zeros_like(X)
-for i in range(n_feats):
-    slope_XZ, intercept_XZ, _, _, _ = stats.linregress(Yd, X[:, i])
-    X_pred = slope_XZ * Yd + intercept_XZ
-    X_resid[:, i] = X[:, i] - X_pred
+    # Step 2: Compute partial correlation coefficients
+    partial_corr_XY_Z_reg = np.zeros(n_feats[i])
+    partial_corr_XY_Z_reg_p = np.zeros(n_feats[i])
+    for j in range(n_feats[i]):
+        partial_corr_XY_Z_reg[j], partial_corr_XY_Z_reg_p[j] = stats.pearsonr(X_resid[:, j], Y_resid)
+    mask = partial_corr_XY_Z_reg_p>0.05
+    partial_corr_XY_Z_reg_mask = np.where(mask, np.nan, partial_corr_XY_Z_reg)
+    # print("Partial correlation coefficients between X and Y controlling for Z using regression: ")
+    pcorr_reshaped = partial_corr_XY_Z_reg.reshape(len(x_sticks[i]), len(y_sticks[i]))
+    pcorr_reshaped_mask = partial_corr_XY_Z_reg_mask.reshape(len(x_sticks[i]), len(y_sticks[i]))
 
-# Step 2: Compute partial correlation coefficients
-partial_corr_XY_Z_reg = np.zeros(n_feats)
-partial_corr_XY_Z_reg_p = np.zeros(n_feats)
-for i in range(n_feats):
-    partial_corr_XY_Z_reg[i], partial_corr_XY_Z_reg_p[i] = stats.pearsonr(X_resid[:, i], Y_resid)
-mask = partial_corr_XY_Z_reg_p>0.05
-# print("Partial correlation coefficients between X and Y controlling for Z using regression: ")
-pcorr_reshaped = partial_corr_XY_Z_reg.reshape(len(freqs), len(ch_labels))
+    print("Partial correlation coefficients between X and Y controlling for Z using regression:")
+    # pcorr = pd.DataFrame(pcorr_reshaped, index=freqs, columns=ch_labels)
 
-print("Partial correlation coefficients between X and Y controlling for Z using regression:")
-pcorr = pd.DataFrame(pcorr_reshaped, index=freqs, columns=ch_labels)
+    fig, ax = plt.subplots(figsize=[8,10])
+    ax = sns.heatmap((pcorr_reshaped.T), cmap="RdBu_r", cbar=True, 
+        yticklabels=y_sticks[i], xticklabels=np.round(x_sticks[i]), cbar_kws={'label': 'Partial Correlation'})
+    yticklabels='auto'
+    plt.xlabel("Frequency(Hz)")
+    plt.ylabel("Channel")
+    plt.title('Partial Correlation of PSD vs mood (controlling for pain) - %s' % (ptID))
+    # xticklabels = 'auto'
+    ytick_labels = y_sticks[i]
+    if ptID=="RCS05":
+        y_ticks = [0,8,21,32, 40, 50, 58, 71, 84, 91]
+    elif ptID=="RCS04":
+        y_ticks = [0,8,15,26,31,41,47,54,65, 66]
+    elif ptID == "RCS02":
+        y_ticks = [0,9,24, 40, 55,70,79,91,99]
+    elif ptID == "RCS07":
+        print('get it')
+
+    y_ticks = np.arange(0,len(y_sticks[i]),1)
+    # ytick_labels = ytick_labels[y_ticks]
+    if i == 0: 
+        x_ticks = [0, 11, 15, 18, 23, 26, 29, 32, 35, 37, 39]
+        xtick_labels = freqs[x_ticks]
+    else: 
+        x_ticks = range(6)
+        xtick_labels = canonical_freq  # Use the correct subset of ylabels
+    ax.set(xticks = x_ticks, xticklabels = np.round(xtick_labels), yticks = y_ticks, yticklabels = ytick_labels)
+    plt.tight_layout()
+    # plt.savefig(save_dir, dpi=300, edgecolor='k', facecolor="white")
+
+    plt.show()
+
+    fig, ax = plt.subplots(figsize=[8,10])
+    ax = sns.heatmap((pcorr_reshaped_mask.T), cmap="RdBu_r", cbar=True, 
+        yticklabels=y_sticks[i], xticklabels=np.round(x_sticks[i]), cbar_kws={'label': 'Partial Correlation'})
+    yticklabels='auto'
+    plt.xlabel("Frequency(Hz)")
+    plt.ylabel("Channel")
+    plt.title('Partial Correlation of PSD vs mood (controlling for pain) - %s' % (ptID))
+    # xticklabels = 'auto'
+    ytick_labels = y_sticks[i]
+    if ptID=="RCS05":
+        y_ticks = [0,8,21,32, 40, 50, 58, 71, 84, 91]
+    elif ptID=="RCS04":
+        y_ticks = [0,8,15,26,31,41,47,54,65, 66]
+    elif ptID == "RCS02":
+        y_ticks = [0,9,24, 40, 55,70,79,91,99]
+    elif ptID == "RCS07":
+        print('get it')
+
+    y_ticks = np.arange(0,len(y_sticks[i]),1)
+    # ytick_labels = ytick_labels[y_ticks]
+    if i == 0: 
+        x_ticks = [0, 11, 15, 18, 23, 26, 29, 32, 35, 37, 39]
+        xtick_labels = freqs[x_ticks]
+    else: 
+        x_ticks = range(6)
+        xtick_labels = canonical_freq  # Use the correct subset of ylabels
+    ax.set(xticks = x_ticks, xticklabels = np.round(xtick_labels), yticks = y_ticks, yticklabels = ytick_labels)
+    plt.tight_layout()
+    # plt.savefig(save_dir, dpi=300, edgecolor='k', facecolor="white")
+
+    plt.show()
 # pcorr
-
-# %%
-# save_dir = '/userdata/aallawala/pain_data/figures/mult_lin_reg/%s_Partial_corr_mood_masked.png' % (ptID)
-fig, ax = plt.subplots(figsize=[8,10])
-ax = sns.heatmap((pcorr_reshaped.T), cmap="RdBu_r", cbar=True, 
-    yticklabels=ch_labels, xticklabels=np.round(freqs), cbar_kws={'label': 'Partial Correlation'})
-yticklabels='auto'
-plt.xlabel("Frequency(Hz)")
-plt.ylabel("Channel")
-plt.title('Partial Correlation of PSD vs mood (controlling for pain) - %s' % (ptID))
-# xticklabels = 'auto'
-ytick_labels = ch_labels
-if ptID=="RCS05":
-    y_ticks = [0,8,21,32, 40, 50, 58, 71, 84, 91]
-elif ptID=="RCS04":
-    y_ticks = [0,8,15,26,31,41,47,54,65, 66]
-elif ptID == "RCS02":
-    y_ticks = [0,9,24, 40, 55,70,79,91,99]
-elif ptID == "RCS07":
-    print('get it')
-
-y_ticks = np.arange(0,115,1)
-ytick_labels = ytick_labels[y_ticks]
-x_ticks = [0, 11, 15, 18, 23, 26, 29, 32, 35, 37, 39]
-xtick_labels = freqs[x_ticks]  # Use the correct subset of ylabels
-ax.set(xticks = x_ticks, xticklabels = np.round(xtick_labels), yticks = y_ticks, yticklabels = ytick_labels)
-plt.tight_layout()
-# plt.savefig(save_dir, dpi=300, edgecolor='k', facecolor="white")
-
-plt.show()
-
 
 # %%
 # Add Representation Similarity Analysis here
@@ -497,7 +563,7 @@ RDMpain = squareform(pdist(vasp_z_clean.reshape(-1,1), metric = 'euclidean'))
 RDMdep = squareform(pdist(vasd_z_clean_r.reshape(-1,1), metric = 'euclidean'))
 
 # raw score of vas is 0-100, zscore is -1 to 1
-RDMf = squareform(pdist(all_data_clean_freq_band_z, metric='correlation'))
+RDMf = squareform(pdist(all_data_clean_freq_roi_z, metric='correlation'))
 
 # dissimilarity 1-correlation
 
@@ -549,7 +615,7 @@ print(p_value_dvp, p_value_freqvd, p_value_freqvp)
 from sklearn.cross_decomposition import CCA
 from sklearn.preprocessing import StandardScaler
 
-X = all_data_clean_freq_band_z # n_trial * (len(bands)*len(large_ch)
+X = all_data_clean_freq_roi_z # n_trial * (len(bands)*len(large_ch)
 Y = np.stack([vasd_z_clean_r, vasp_z_clean],axis=1)
 # Or X = band_data_z.reshape((len(bands)*n_ch, n_trial).T -- channels not concatenated
 
