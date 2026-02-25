@@ -21,7 +21,6 @@
 
 
 # %%
-%reset
 import sys
 sys.path.append("/home/jiahuang/test-code-hazel/")
 import gen_fxns
@@ -121,6 +120,8 @@ missing_surveys = np.setdiff1d( fileids, raw_surveys.record_id) # unique vals in
 
 missing_channels = [i for i in range(all_data.shape[1]) if np.any(all_data[:,i,:])!=0]
 print((missing_channels))
+removed = [i for i in range(all_data.shape[1]) if np.any(all_data[:,i,:])==0]
+print((removed))
 
 # remove missing survey record ids from neural data. 
 idx_missing_surveys = ~np.isin(fileids, missing_surveys)
@@ -263,78 +264,6 @@ print(canonical_freq)
 # 
 
 # %%
-import statsmodels.api as sm
-from patsy import dmatrices
-
-df = pd.DataFrame({'VASP': vasp_z_clean.flatten(), 'VASD': vasd_z_clean_r.flatten()})
-clean_psd_z_new = clean_psd_z.T
-
-for i in range(clean_psd_z_new.shape[1]):
-    df[f'PSD{i}'] = clean_psd_z_new[:, i]
-
-design_matrices = {}
-
-for i in range(clean_psd_z_new.shape[1]):
-    formula = f'PSD{i} ~ VASD + VASP'
-    y, X = dmatrices(formula, data=df, return_type='dataframe')
-    design_matrices[f'PSD{i}'] = {'y': y, 'X': X}
-
-results = {}
-
-for key in design_matrices.keys(): #keys are psd0, psd1, etc. 
-    y = design_matrices[key]['y']
-    X = design_matrices[key]['X']
-    
-    mod = sm.OLS(y, X)  # Create model
-    res = mod.fit()     # Fit model
-    
-    results[key] = {
-        'summary': res.summary(),  # Summary of the regression
-        'tvalues': res.tvalues,    # T-values of the coefficients
-        'pvalues': res.pvalues     # P-values of the coefficients
-    }
-
-#put t-values in an array. 
-t_vals= [] 
-p_vals =[] 
-for i in range(len(results)):
-    tmp_tval = results[f'PSD{i}']['tvalues']['Intercept']
-    t_vals.append(tmp_tval)
-
-    tmp_pval = results[f'PSD{i}']['pvalues']['Intercept']
-    p_vals.append(tmp_tval)
-
-tval_stack = np.vstack(t_vals)
-tval_reshape = np.reshape(tval_stack,[n_freq, n_ch])
-
-pval_stack = np.vstack(p_vals)
-pval_reshape = np.reshape(pval_stack,[n_freq, n_ch])
-
-# %%
-def run_corr(x,y, n_freq, n_ch):
-    from scipy.stats import spearmanr
-    corr,p_value = spearmanr(x,y)
-    correlations = corr[:-1,-1]
-    p = p_value[:-1,-1].reshape(n_freq,n_ch)
-    new_corr = correlations.reshape(n_freq,n_ch)
-    return new_corr, p
-
-corr_vasd, p = run_corr(clean_psd_z.T, vasd_z_clean_r, n_freq, n_ch)
-corr_vasd_mask = np.where(p>0.05, np.nan, corr_vasd)
-corr_vasd2, p = run_corr(all_data_clean_freq_roi_z, vasd_z_clean_r, len(bands), len(large_ROI))
-corr_vasd2_mask = np.where(p>0.05, np.nan, corr_vasd2)
-corr_vasd3, p = run_corr(all_data_clean_freq_z, vasd_z_clean_r, len(bands), len(ch_labels))
-corr_vasd3_mask = np.where(p>0.05, np.nan, corr_vasd3)
-
-corr_vasp, p2 = run_corr(clean_psd_z.T, vasp_z_clean, n_freq, n_ch)
-corr_vasp_mask = np.where(p2>0.05, np.nan, corr_vasp)
-corr_vasp2, p2 = run_corr(all_data_clean_freq_roi_z, vasp_z_clean, len(bands), len(large_ROI))
-corr_vasp2_mask = np.where(p2>0.05, np.nan, corr_vasp2)
-corr_vasp3, p2 = run_corr(all_data_clean_freq_z, vasp_z_clean, len(bands), len(ch_labels))
-corr_vasp3_mask = np.where(p2>0.05, np.nan, corr_vasp3)
-
-
-# %%
 sys.path.append("/home/jiahuang/test-code-hazel/gen_fxns/")
 savepath = f"/userdata/jiahuang/pain-data/figures/Stage1-test/{ptID}/"
 import os
@@ -374,16 +303,120 @@ def plot_heatmap_subplots(data_list, ch_labels, freqs, cbar_titles, titles, save
     plt.tight_layout()
     save_dir = f"/userdata/jiahuang/pain-data/figures/Stage1-test/{ptID}/{savetitle}"
 
-    # plt.savefig(save_dir, dpi=300, edgecolor='k', facecolor="white")
+    plt.savefig(save_dir, dpi=300, edgecolor='k', facecolor="white")
     plt.show()
+
+# %%
+# OLS Tstats
+import statsmodels.api as sm
+from patsy import dmatrices
+
+df = pd.DataFrame({'VASP': vasp_z_clean.flatten(), 'VASD': vasd_z_clean_r.flatten()})
+clean_psd_z_news = [clean_psd_z.T, all_data_clean_freq_z, all_data_clean_freq_roi_z]
+title = [ "All chanel all frequency OLS T-stats", "All chanel canonical frequency OLS T-stats","Large roi canonical frequency OLS T-stats"]
+ch = [ch_labels, ch_labels, large_ROI]
+freq = [freqs, canonical_freq, canonical_freq]
+
+for j in range(3):
+    clean_psd_z_new = clean_psd_z_news[j]
+    for i in range(clean_psd_z_new.shape[1]):
+        df[f'PSD{i}'] = clean_psd_z_new[:, i]
+
+    design_matrices = {}
+
+    for i in range(clean_psd_z_new.shape[1]):
+        formula = f'PSD{i} ~ VASD + VASP'
+        y, X = dmatrices(formula, data=df, return_type='dataframe')
+        design_matrices[f'PSD{i}'] = {'y': y, 'X': X}
+
+    results = {}
+
+    for key in design_matrices.keys(): #keys are psd0, psd1, etc. 
+        y = design_matrices[key]['y']
+        X = design_matrices[key]['X']
+        
+        mod = sm.OLS(y, X)  # Create model
+        res = mod.fit()     # Fit model
+        
+        results[key] = {
+            'summary': res.summary(),  # Summary of the regression
+            'tvalues': res.tvalues,    # T-values of the coefficients
+            'pvalues': res.pvalues     # P-values of the coefficients
+        }
+
+    #put t-values in an array. 
+    #put t-values in an array. 
+    t_vals_d= []
+    t_vals_p = [] 
+    p_vals_p =[] 
+    p_vals_d = []
+    for i in range(len(results)):
+        tmp_tval = results[f'PSD{i}']['tvalues']['VASD']
+        t_vals_d.append(tmp_tval)
+
+        tmp_pval = results[f'PSD{i}']['pvalues']['VASD']
+        p_vals_d.append(tmp_tval)
+
+        tmp_tval = results[f'PSD{i}']['tvalues']['VASP']
+        t_vals_p.append(tmp_tval)
+
+        tmp_pval = results[f'PSD{i}']['pvalues']['VASP']
+        p_vals_p.append(tmp_tval)
+
+    tval_stack_d = np.vstack(t_vals_d)
+    tval_reshape_d = np.reshape(tval_stack_d,[len(freq[j]), len(ch[j])])
+
+    pval_stack_d = np.vstack(p_vals_d)
+    pval_reshape_d = np.reshape(pval_stack_d,[len(freq[j]), len(ch[j])])
+
+    tval_stack_p = np.vstack(t_vals_p)
+    tval_reshape_p = np.reshape(tval_stack_p,[len(freq[j]), len(ch[j])])
+
+    pval_stack_p = np.vstack(p_vals_p)
+    pval_reshape_p = np.reshape(pval_stack_p,[len(freq[j]), len(ch[j])])
+
+    mask_pvalues = pval_reshape_p > 0.05
+    # Apply mask: Set values where mask is True to NaN
+    masked_t_vals_p = np.where(mask_pvalues, np.nan, tval_reshape_p)
+
+    mask_pvalues = pval_reshape_d > 0.05
+    # Apply mask: Set values where mask is True to NaN
+    masked_t_vals_d = np.where(mask_pvalues, np.nan, tval_reshape_d)
+
+    plot_heatmap_subplots([masked_t_vals_p, masked_t_vals_d], ch[j], freq[j], ['Tstats','Tstats'],['OLS PSD vs Pain %s' % (ptID), 'OLS PSD vs Mood %s' % (ptID)], title[j], nrows=1, ncols=2)
+
+# %%
+# Correlation analysis
+
+def run_corr(x,y, n_freq, n_ch):
+    from scipy.stats import spearmanr
+    corr,p_value = spearmanr(x,y)
+    correlations = corr[:-1,-1]
+    p = p_value[:-1,-1].reshape(n_freq,n_ch)
+    new_corr = correlations.reshape(n_freq,n_ch)
+    return new_corr, p
+
+corr_vasd, p = run_corr(clean_psd_z.T, vasd_z_clean_r, n_freq, n_ch)
+corr_vasd_mask = np.where(p>0.05, np.nan, corr_vasd)
+corr_vasd2, p = run_corr(all_data_clean_freq_roi_z, vasd_z_clean_r, len(bands), len(large_ROI))
+corr_vasd2_mask = np.where(p>0.05, np.nan, corr_vasd2)
+corr_vasd3, p = run_corr(all_data_clean_freq_z, vasd_z_clean_r, len(bands), len(ch_labels))
+corr_vasd3_mask = np.where(p>0.05, np.nan, corr_vasd3)
+
+corr_vasp, p2 = run_corr(clean_psd_z.T, vasp_z_clean, n_freq, n_ch)
+corr_vasp_mask = np.where(p2>0.05, np.nan, corr_vasp)
+corr_vasp2, p2 = run_corr(all_data_clean_freq_roi_z, vasp_z_clean, len(bands), len(large_ROI))
+corr_vasp2_mask = np.where(p2>0.05, np.nan, corr_vasp2)
+corr_vasp3, p2 = run_corr(all_data_clean_freq_z, vasp_z_clean, len(bands), len(ch_labels))
+corr_vasp3_mask = np.where(p2>0.05, np.nan, corr_vasp3)
 
 
 # Plot the heatmaps in a 2x2 grid
-# plot_heatmap_subplots([corr_vasp, corr_vasd], ch_labels, freqs, ['Corr', 'Corr'], ['PSD vs Pain %s' % (ptID), 'PSD vs Mood %s' % (ptID)], "All chanel roi correlation", nrows=1, ncols=2)
+plot_heatmap_subplots([corr_vasp, corr_vasd], ch_labels, freqs, ['Corr', 'Corr'], ['PSD vs Pain %s' % (ptID), 'PSD vs Mood %s' % (ptID)], "All chanel roi correlation", nrows=1, ncols=2)
 
-# plot_heatmap_subplots([corr_vasp2, corr_vasd2], large_ROI, canonical_freq, ['Corr', 'Corr'], ['Band+ROI Concatenated PSD vs Pain %s' % (ptID), 'Band+ROI Concatenated PSD vs Mood %s' % (ptID)], "Canonical chanel roi correlation ", nrows=1, ncols=2)
+plot_heatmap_subplots([corr_vasp2, corr_vasd2], large_ROI, canonical_freq, ['Corr', 'Corr'], ['Band+ROI Concatenated PSD vs Pain %s' % (ptID), 'Band+ROI Concatenated PSD vs Mood %s' % (ptID)], "Canonical chanel roi correlation ", nrows=1, ncols=2)
 
-# plot_heatmap_subplots([corr_vasp3, corr_vasd3], ch_labels, canonical_freq, ['Corr', 'Corr'], ['Only Band Concatenated PSD vs Pain %s' % (ptID), 'Only Band Concatenated PSD vs Mood %s' % (ptID)], "Canonical chanel roi correlation ", nrows=1, ncols=2)
+plot_heatmap_subplots([corr_vasp3, corr_vasd3], ch_labels, canonical_freq, ['Corr', 'Corr'], ['Only Band Concatenated PSD vs Pain %s' % (ptID), 'Only Band Concatenated PSD vs Mood %s' % (ptID)], "Canonical chanel roi correlation ", nrows=1, ncols=2)
 
 plot_heatmap_subplots([corr_vasp_mask, corr_vasd_mask], ch_labels, freqs, ['Corr', 'Corr'], ['PSD vs Pain %s' % (ptID), 'PSD vs Mood %s' % (ptID)], "All chanel roi correlation", nrows=1, ncols=2)
 
@@ -393,42 +426,8 @@ plot_heatmap_subplots([corr_vasp3_mask, corr_vasd3_mask], ch_labels, canonical_f
 
 
 # %%
-mask_pvalues = pval_reshape > 0.05
-# Apply mask: Set values where mask is True to NaN
-masked_t_vals = np.where(mask_pvalues, np.nan, tval_reshape)
+# Partial Correlation controlled for pain
 
-# %%
-# Didn't change here - y_ticks?
-fig, ax = plt.subplots(figsize=[8,10])
-sns.heatmap((masked_t_vals.T), cmap='RdBu_r', cbar=True, 
- vmin = -1, vmax = 1, yticklabels=ch_labels, xticklabels=np.round(freqs), cbar_kws={'label': 'Tstatistic'})
-
-ytick_labels = ch_labels
-if ptID=="RCS05":
-    y_ticks = [0,8,21,32, 40, 50, 58, 71, 84, 91]
-elif ptID=="RCS04":
-    y_ticks = [0,8,15,26,31,41,47,54,65, 66]
-elif ptID == "RCS02":
-    y_ticks = [0,9,24, 40, 55,70,79,91,99]
-elif ptID == "RCS07":
-    y_ticks = [0,10,23,37,49,60,67,76,83,94,100,107]
-
-y_ticks = np.arange(0,115,1)
-ytick_labels = ch_labels
-x_ticks = [0, 11, 15, 18, 23, 26, 29, 32, 35, 37, 39]
-xtick_labels = freqs[x_ticks]  # Use the correct subset of ylabels
-ax.set(xticks = x_ticks, xticklabels = np.round(xtick_labels), yticks = y_ticks, yticklabels = ytick_labels)
-plt.title(f"{ptID}")
-ax.set_xlabel("Frequency(Hz)")
-ax.set_ylabel("Channel")
-
-# savepath = f"/userdata/jiahuang/pain_data/figures/mult_lin_reg/{ptID}_intercept_linearreg.png"
-# plt.savefig(savepath, dpi = 300, edgecolor = 'k', facecolor="white")
-plt.show()
-
-
-
-# %%
 from scipy import stats, linalg
 
 # Step 1: Fit regression models and obtain residuals
@@ -535,7 +534,134 @@ for i in range(len(Xs)):
 # pcorr
 
 # %%
-# Add Representation Similarity Analysis here
+# Regularized partial correlation network (tabled)
+
+from sklearn.covariance import GraphicalLassoCV
+
+partial_corr_re_X = np.mean(all_data_clean_freq_roi,axis=0).T
+
+model = GraphicalLassoCV(alphas=10,cv=5,max_iter=2000)
+
+model.fit(partial_corr_re_X)
+model.cv_results_
+
+fig, ax = plt.subplots(figsize=(7,6))
+map = ax.imshow(model.covariance_, aspect='auto')
+plt.title(f"{ptID} regularized partial correlation network")
+plt.xlabel("Features")
+
+ax.set_xticks(np.arange(len(large_ROI)))
+ax.set_yticks(np.arange(len(large_ROI)))
+
+ax.set_xticklabels(large_ROI, fontsize=6)
+ax.set_yticklabels(large_ROI, fontsize=6)
+cb = fig.colorbar(map,ax=ax, shrink=1)
+cb.ax.tick_params(labelsize=7, size=1, pad=1)
+cb.ax.set_ylabel('covariance', size=10)
+plt.show()
+
+
+# %%
+# Also regularized partial correlation network code from https://pmc.ncbi.nlm.nih.gov/articles/PMC12461088/#IMAG.a.162-S1
+# This will have package dependencies issue
+import gglasso.problem
+from gglasso.problem import glasso_problem
+from sklearn.covariance import log_likelihood,empirical_covariance
+partial_corr_re_X = all_data_clean_freq_roi_z.T
+
+def graphicalLassoCV(data,L1s=None,kFolds=10,optMethod='loglikelihood',foldsScheme='blocked'):
+    if L1s is None:
+        # Test log-scaled range of L1s (from 0.316 to 0.001)
+        L1s = np.arange(-.5,-3.1,-.1) 
+        L1s = 10**L1s
+
+    nTRs = data.shape[1]
+    kFoldsTRs = np.full((kFolds,nTRs),False)
+
+    if foldsScheme=='blocked':
+        TRsPerFold = nTRs/kFolds
+        t1 = 0
+        for k in range(kFolds):
+            t2 = int(np.round((k+1)*TRsPerFold))
+            kFoldsTRs[k,t1:t2] = True
+            t1 = t2
+    elif foldsScheme=='interleaving':
+        k = 0
+        for t in range(nTRs):
+            kFoldsTRs[k,t] = True
+            k += 1
+            if k >= kFolds:
+                k = 0
+    
+    scores = np.zeros((len(L1s),kFolds))
+    for l,L1 in enumerate(L1s):
+        # Loop through folds
+        for k in range(kFolds):
+            # Estimate the regularized partial correlation and precision (intermediate) matrices
+            parCorr,prec = graphicalLasso(data[:,~kFoldsTRs[k]],L1)
+
+            if optMethod == 'loglikelihood':
+                # Calculate negative loglikelihood
+                empCov_test = np.cov(stats.zscore(data[:,kFoldsTRs[k]],axis=1),rowvar=True)
+                scores[l,k] = -log_likelihood(empCov_test,prec)
+
+            # elif optMethod == 'R2':
+            #     # Calculate R^2
+            #     scores[l,k],r = activityPrediction(stats.zscore(data[:,kFoldsTRs[k]],axis=1),parCorr)
+
+    # Find the best param according to each performance metric
+    meanScores = np.mean(scores,axis=1)
+    if optMethod == 'loglikelihood':
+        bestParam = L1s[meanScores==np.amin(meanScores)]
+    elif optMethod == 'R2':
+        bestParam = L1s[meanScores==np.amax(meanScores)]
+
+    # Estimate the regularized partial correlation using all data and the optimal hyperparameters
+    parCorr,prec = graphicalLasso(data,bestParam)
+    return parCorr, prec
+
+def graphicalLasso(data,L1):
+    '''
+    Calculates the L1-regularized partial correlation matrix of a dataset. Runs GGLasso's graphical lasso function (glasso_problem.solve()) and several other necessary steps.
+    INPUT:
+        data : a dataset with dimension [nNodes x nDatapoints]
+        L1 : L1 (lambda1) hyperparameter value
+    OUTPUT:
+        glassoParCorr : regularized partial correlation coefficients (i.e., FC matrix)
+        prec : precision matrix, where entries are not yet transformed into partial correlations (used to compute loglikelihood)
+    '''
+
+    nNodes = data.shape[0]
+
+    # Z-score the data
+    data_scaled = stats.zscore(data,axis=1)
+
+    # Estimate the empirical covariance
+    empCov = np.cov(data_scaled,rowvar=True)
+
+    # Number of timepoints in data
+    nTRs = data.shape[1]
+
+    # Run glasso
+    glasso = glasso_problem(empCov,nTRs,reg_params={'lambda1':L1},latent=False,do_scaling=False)
+    # #Output to null device to suppress verbose output
+    # with open(os.devnull, "w") as f, contextlib.redirect_stdout(f):
+    #     result = glasso.solve(verbose=False)
+    prec = np.squeeze(glasso.solution.precision_)
+
+    # Transform precision matrix into regularized partial correlation matrix
+    denom = np.atleast_2d(1. / np.sqrt(np.diag(prec)))
+    glassoParCorr = -prec * denom * denom.T
+    np.fill_diagonal(glassoParCorr,0)
+
+    return glassoParCorr,prec
+
+parCorr, prec = graphicalLassoCV(partial_corr_re_X)
+parCorr
+
+# %%
+# Representation Similarity Analysis
+
 # Input:
 #   X = clean_psd_z (trials x number_frequencies x number_channels, 211*40*124)
 #   Yd = vasd_z_clean_r (number_trials)
@@ -648,7 +774,97 @@ ax.set_ylabel("ROI")
 plt.show()
 
 # %%
-corrs
+# Regularized CCA analysis
+
+import rcca
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+
+X = all_data_clean_freq_roi_z # n_trial * (len(bands)*len(large_ch)
+Y = np.stack([vasd_z_clean_r, vasp_z_clean],axis=1)
+iterations = 200
+all_numCC = []
+all_numreg = []
+
+
+scaler = StandardScaler()
+# X_scaled = scaler.fit_transform(X)
+Y = scaler.fit_transform(Y)
+
+for i in range(iterations):
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, train_size=0.7)
+
+    # from sklearn.decomposition import PCA
+
+    # pca = PCA(n_components=0.999)
+    # X_train_pca = pca.fit_transform(X_train)
+    # X_test_pca  = pca.transform(X_test)
+
+    regs = np.logspace(-3,3,10)
+    ccaCV = rcca.CCACrossValidate(kernelcca=False, numCCs = [1,2],regs = regs)
+
+    # Use the train() and validate() methods to run the analysis and perform cross-dataset prediction.
+    ccaCV.train([X_train, Y_train])
+    ccaCV.validate([X_test, Y_test])
+    all_numCC.append(ccaCV.best_numCC)
+    all_numreg.append(ccaCV.best_reg)
+    
+occur = [(all_numreg == i).sum() for i in regs]
+best_reg = [regs[i] for i in range(len(regs)) if occur[i]==np.max(occur)][0]
+print(occur, best_reg)
+updated_cca = rcca.CCA(kernelcca=False, numCC = 1, reg = best_reg)
+updated_cca.train([X,Y])
+updated_cca.cancorrs, updated_cca.ws[1]
+
+# %%
+
+fig, ax = plt.subplots(figsize=(8,6))
+plt.imshow(updated_cca.ws[0][:,0].reshape(len(large_ROI), len(bands)), aspect='auto')
+plt.colorbar(label='Weight')
+x_ticks, y_ticks = np.arange(len(bands)), np.arange(len(large_ROI))
+ax.set(xticks = x_ticks, xticklabels = bands, yticks = y_ticks, yticklabels = large_ROI)
+plt.title(f"{ptID} regularized CCA1: y_depression = {np.round(updated_cca.ws[1][0,0],3)}, y_pain = {np.round(updated_cca.ws[1][1, 0],3)}, corr = {np.round(updated_cca.cancorrs[0],3)}")
+ax.set_xlabel("Canonical frequency")
+ax.set_ylabel("ROI")
+plt.show()
+
+# %%
+# Regularized cca from cca-zoo - unifinished, they also have sparse cca model
+from cca_zoo.linear import rCCA
+from sklearn.model_selection import train_test_split
+X = all_data_clean_freq_roi_z # n_trial * (len(bands)*len(large_ch)
+Y = np.stack([vasd_z_clean_r, vasp_z_clean],axis=1)
+scaler = StandardScaler()
+Y = scaler.fit_transform(Y)
+X_train, X_test, Y_train, Y_test = train_test_split(X, Y, train_size=0.7)
+cs = np.logspace(-3,3,10)
+for c in cs:
+    model = rCCA(c = c)
+
+    model.fit([X_train, Y_train])
+    model.canonical_loadings_
+
+# %%
+# saving metadata
+import json
+save_metadata = f'/userdata/jiahuang/pain-data/Stage1-test/{ptID}'
+removed = [i for i in range(all_data.shape[1]) if np.any(all_data[:,i,:])==0]
+
+# date, person did the analysis, short text description, code version, .py, ptID, ch_label, ch_removed
+
+metadata = {
+    "Date": date.today(),
+    "Analyzer": 'Hazel Huang',
+    "Code version": ,
+    "ptID":ptID,
+    "Channel labels": ch_labels,
+    "Removed channels":removed,
+    "description": "missing survey/ieeg channel removed, normalized, 3 types of concatenation, run correlation/partial correlation/cca/rsa/ols tstats."
+
+}
+
+with open(f"{save_metadata}/metadata.json", "w") as f:
+    json.dump(metadata, f)
 
 # %%
 from fooof import FOOOF, FOOOFGroup
