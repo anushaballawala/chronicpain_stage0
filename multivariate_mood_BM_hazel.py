@@ -38,7 +38,7 @@ import pickle
 import os 
 
 # %%
-ptID = "RCS02" # patient ID
+ptID = "RCS06" # patient ID
 path_string = f"/userdata/jiahuang/pain-data/Stage1-test/{ptID}/biomarker/preproc_data/all_channels/"
 pt_path = f"/userdata/rvatsyayan/AnushaData/HDF5 Pain Data/{ptID}"
 data_root = Path(path_string)
@@ -161,9 +161,12 @@ psd_z_vec = np.reshape(new_alldata, (n_feats, n_trials))
 
 vasd = new_surveys['mood_vas_s0'].to_numpy() # depression/mood survey scores 
 vasp = new_surveys['intensity_vas_s0'].to_numpy() #pain survey scores
+mpq_affective = new_surveys[['tiring_exhausting_s0', 'sickening_s0', 'fearful_s0','punishing_cruel_s0']]
+sum_affective = np.sum(mpq_affective,axis=1).to_numpy()
 
 vasd_vec = vasd.reshape(-1)
 vasp_vec = vasp.reshape(-1)
+sum_affective_vec = sum_affective.reshape(-1)
 
 def man_z_score(array):
     array_mean = np.nanmean(array)
@@ -173,6 +176,7 @@ def man_z_score(array):
 
 vasd_z = man_z_score(vasd_vec)
 vasp_z = man_z_score(vasp_vec)
+affective_z = man_z_score(sum_affective_vec)
 
 # %%
 ## remove nans from filtered data.  
@@ -188,16 +192,19 @@ def find_nans(array):
 
 nan_idx_vasd = find_nans(vasd_z)
 nan_idx_vasp = find_nans(vasp_z)
-nan_idx_all  = np.unique(np.concatenate([nan_idx_vasd, nan_idx_vasp]))
+nan_idx_aff = find_nans(affective_z)
+nan_idx_all  = np.unique(np.concatenate([nan_idx_vasd, nan_idx_vasp, nan_idx_aff]))
 print(nan_idx_all)
 # clean up surveys from nans. 
 vasd_z_clean = np.delete(vasd_z, [nan_idx_all], axis = 0)
 vasp_z_clean = np.delete(vasp_z, [nan_idx_all], axis = 0)
+affective_z = np.delete(affective_z, [nan_idx_all], axis = 0)
 
 # remove nans. 
 new_surveys = new_surveys.drop(new_surveys.index[nan_idx_all], axis=0) # remove by positional index clean_psd_z= np.delete(psd_z_vec, nan_idx_all, axis=1)
 clean_psd_z= np.delete(psd_z_vec, nan_idx_all, axis=1) #**** ?????
 print(clean_psd_z.shape)
+
 
 
 # %%
@@ -250,10 +257,18 @@ for i in range(len(large_ROI)):
 	ch = large_ROI[i]
 	idxc = [ch in ch_name for ch_name in ch_labels]
 	ch_data[:,i,:] = np.mean(band_data[:, idxc, :], axis = 1)
+
+ch_data_new = np.zeros((len(freqs), len(large_ROI), n_trials))
+
+for i in range(len(large_ROI)):
+	ch = large_ROI[i]
+	idxc = [ch in ch_name for ch_name in ch_labels]
+	ch_data_new[:,i,:] = np.mean(clean_alldata[:, idxc, :], axis = 1)
 	
 all_data_clean_freq_roi = zscore(ch_data, axis = 2)
 all_data_clean_freq_roi_z = all_data_clean_freq_roi.reshape(len(bands)*len(large_ROI), n_trials).T
 all_data_clean_freq_z = zscore(band_data, axis=2).reshape(len(bands)*len(ch_labels), n_trials).T
+all_data_clean_roi_z = zscore(ch_data_new, axis=1).reshape(len(freqs)*len(large_ROI), n_trials).T
 
 print(ch_labels)
 print(large_ROI)
@@ -402,6 +417,8 @@ corr_vasd2, p = run_corr(all_data_clean_freq_roi_z, vasd_z_clean_r, len(bands), 
 corr_vasd2_mask = np.where(p>0.05, np.nan, corr_vasd2)
 corr_vasd3, p = run_corr(all_data_clean_freq_z, vasd_z_clean_r, len(bands), len(ch_labels))
 corr_vasd3_mask = np.where(p>0.05, np.nan, corr_vasd3)
+corr_vasd4, p = run_corr(all_data_clean_roi_z, vasd_z_clean_r, len(freqs), len(large_ROI))
+corr_vasd4_mask = np.where(p>0.05, np.nan, corr_vasd4)
 
 corr_vasp, p2 = run_corr(clean_psd_z.T, vasp_z_clean, n_freq, n_ch)
 corr_vasp_mask = np.where(p2>0.05, np.nan, corr_vasp)
@@ -409,20 +426,35 @@ corr_vasp2, p2 = run_corr(all_data_clean_freq_roi_z, vasp_z_clean, len(bands), l
 corr_vasp2_mask = np.where(p2>0.05, np.nan, corr_vasp2)
 corr_vasp3, p2 = run_corr(all_data_clean_freq_z, vasp_z_clean, len(bands), len(ch_labels))
 corr_vasp3_mask = np.where(p2>0.05, np.nan, corr_vasp3)
+corr_vasp4, p2 = run_corr(all_data_clean_roi_z, vasp_z_clean, len(freqs), len(large_ROI))
+corr_vasp4_mask = np.where(p2>0.05, np.nan, corr_vasp4)
+
+corr_aff, p3 = run_corr(clean_psd_z.T, affective_z, n_freq, n_ch)
+corr_aff_mask = np.where(p3>0.05, np.nan, corr_aff)
+corr_aff2, p3 = run_corr(all_data_clean_freq_roi_z, affective_z, len(bands), len(large_ROI))
+corr_aff2_mask = np.where(p3>0.05, np.nan, corr_aff2)
+corr_aff3, p3 = run_corr(all_data_clean_freq_z, affective_z, len(bands), len(ch_labels))
+corr_aff3_mask = np.where(p3>0.05, np.nan, corr_aff3)
+corr_aff4, p3 = run_corr(all_data_clean_roi_z, affective_z, n_freq, len(large_ROI))
+corr_aff4_mask = np.where(p3>0.05, np.nan, corr_aff4)
 
 
 # Plot the heatmaps in a 2x2 grid
-plot_heatmap_subplots([corr_vasp, corr_vasd], ch_labels, freqs, ['Corr', 'Corr'], ['PSD vs Pain %s' % (ptID), 'PSD vs Mood %s' % (ptID)], "All chanel roi correlation", nrows=1, ncols=2)
+plot_heatmap_subplots([corr_vasp, corr_vasd, corr_aff], ch_labels, freqs, ['Corr', 'Corr','Corr'], ['PSD vs Pain %s' % (ptID), 'PSD vs Mood %s' % (ptID),'PSD vs Affective %s' % (ptID)], "All chanel roi correlation - with affective comp", nrows=1, ncols=3)
 
-plot_heatmap_subplots([corr_vasp2, corr_vasd2], large_ROI, canonical_freq, ['Corr', 'Corr'], ['Band+ROI Concatenated PSD vs Pain %s' % (ptID), 'Band+ROI Concatenated PSD vs Mood %s' % (ptID)], "Canonical chanel roi correlation ", nrows=1, ncols=2)
+plot_heatmap_subplots([corr_vasp2, corr_vasd2, corr_aff2], large_ROI, canonical_freq, ['Corr', 'Corr','Corr'], ['Band+ROI Concatenated PSD vs Pain %s' % (ptID), 'Band+ROI Concatenated PSD vs Mood %s' % (ptID),'Band+ROI Concatenated PSD vs Affective %s' % (ptID)], "Canonical chanel roi correlation - with affective comp", nrows=1, ncols=3)
 
-plot_heatmap_subplots([corr_vasp3, corr_vasd3], ch_labels, canonical_freq, ['Corr', 'Corr'], ['Only Band Concatenated PSD vs Pain %s' % (ptID), 'Only Band Concatenated PSD vs Mood %s' % (ptID)], "Canonical chanel roi correlation ", nrows=1, ncols=2)
+plot_heatmap_subplots([corr_vasp3, corr_vasd3, corr_aff3], ch_labels, canonical_freq, ['Corr', 'Corr','Corr'], ['Only Band Concatenated PSD vs Pain %s' % (ptID), 'Only Band Concatenated PSD vs Mood %s' % (ptID),'Only Band Concatenated PSD vs Affective %s' % (ptID)], "Canonical chanel correlation - with affective comp ", nrows=1, ncols=3)
 
-plot_heatmap_subplots([corr_vasp_mask, corr_vasd_mask], ch_labels, freqs, ['Corr', 'Corr'], ['PSD vs Pain %s' % (ptID), 'PSD vs Mood %s' % (ptID)], "All chanel roi correlation", nrows=1, ncols=2)
+plot_heatmap_subplots([corr_vasp4, corr_vasd4, corr_aff4], large_ROI, freqs, ['Corr', 'Corr','Corr'], ['Only ROI Concatenated PSD vs Pain %s' % (ptID), 'Only ROI Concatenated PSD vs Mood %s' % (ptID), 'Only ROI Concatenated PSD vs Affective %s' % (ptID)], "Brain roi correlation - with affective comp ", nrows=1, ncols=3)
 
-plot_heatmap_subplots([corr_vasp2_mask, corr_vasd2_mask], large_ROI, canonical_freq, ['Corr', 'Corr'], ['Band+ROI Concatenated PSD vs Pain %s' % (ptID), 'Band+ROI Concatenated PSD vs Mood %s' % (ptID)], "Canonical chanel roi correlation ", nrows=1, ncols=2)
+plot_heatmap_subplots([corr_vasp_mask, corr_vasd_mask, corr_aff_mask], ch_labels, freqs, ['Corr', 'Corr','Corr'], ['PSD vs Pain %s' % (ptID), 'PSD vs Mood %s' % (ptID),'PSD vs Affective %s' % (ptID)], "Masked All chanel roi correlation - with affective comp", nrows=1, ncols=3)
 
-plot_heatmap_subplots([corr_vasp3_mask, corr_vasd3_mask], ch_labels, canonical_freq, ['Corr', 'Corr'], ['Only Band Concatenated PSD vs Pain %s' % (ptID), 'Only Band Concatenated PSD vs Mood %s' % (ptID)], "Canonical chanel roi correlation ", nrows=1, ncols=2)
+plot_heatmap_subplots([corr_vasp2_mask, corr_vasd2_mask, corr_aff2_mask], large_ROI, canonical_freq, ['Corr', 'Corr','Corr'], ['Band+ROI Concatenated PSD vs Pain %s' % (ptID), 'Band+ROI Concatenated PSD vs Mood %s' % (ptID), 'Band+ROI Concatenated PSD vs Affective %s' % (ptID)], "Masked Canonical chanel roi correlation - with affective comp ", nrows=1, ncols=3)
+
+plot_heatmap_subplots([corr_vasp3_mask, corr_vasd3_mask, corr_aff3_mask], ch_labels, canonical_freq, ['Corr', 'Corr','Corr'], ['Only Band Concatenated PSD vs Pain %s' % (ptID), 'Only Band Concatenated PSD vs Mood %s' % (ptID),'Only Band Concatenated PSD vs Affective %s' % (ptID)], "Masked Canonical chanel correlation - with affective comp ", nrows=1, ncols=3)
+
+plot_heatmap_subplots([corr_vasp4_mask, corr_vasd4_mask, corr_aff4_mask], large_ROI, freqs, ['Corr', 'Corr','Corr'], ['Only ROI Concatenated PSD vs Pain %s' % (ptID), 'Only ROI Concatenated PSD vs Mood %s' % (ptID),'Only ROI Concatenated PSD vs Affective %s' % (ptID)], "Masked Brain roi correlation - with affective comp ", nrows=1, ncols=3)
 
 
 # %%
