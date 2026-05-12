@@ -10,9 +10,9 @@ from datetime import date
 import pandas as pd
 
 # %%
-sys.path.append("/home/jiahuang/test-code-hazel/gen-fxns/seeg-signal/Signal-proc/")
+sys.path.append("/home/jiahuang/test-code-hazel/gen_fxns/seeg-signal/Signal-proc/")
 # filepath = sys.argv[1] 
-ptID = 'RCS02'
+ptID = 'RCS04'
 filepath = f"/userdata/rvatsyayan/AnushaData/HDF5 Pain Data/{ptID}/1.h5"
 from preproc_fxns import demean_signal
 
@@ -54,7 +54,7 @@ f1[EEG].read_direct(intracranialEEG_data)
 # samples x channels array 
 
 # test plot 
-np.shape(intracranialEEG_data)
+print(np.shape(intracranialEEG_data))
 def plot_data(data, t_max=10000, plot_max=1):
     for i in range(plot_max):
         plt.plot(data[:t_max, i])
@@ -63,11 +63,9 @@ def plot_data(data, t_max=10000, plot_max=1):
 
 print('shape of intracranial EEG')
 # np.shape(f1['intracranialEEG'])
-plot_data(intracranialEEG_data)
+# plot_data(intracranialEEG_data)
+# plt.plot(intracranialEEG_data[:,99]-intracranialEEG_data[:,100])
 
-
-# %%
-# len(ch_label)
 
 # %%
 from preproc_fxns import demean_signal, downsample_signal, butterworth_notch_filter
@@ -89,26 +87,25 @@ filt_data = butterworth_notch_filter(filt_data,order, notch_freqs[3], srate_new,
 # The filtered data is now stored in filt_data
 
 # %%
-# ch_label[0]
-
-# %%
 import re
 import numpy as np
 
 electrode_dict = {}
-
+index_in_electrodepropfile = {}
 # Group channels by base electrode name (everything before the digits)
-for idx, label in enumerate(ch_label):
+for i, label in enumerate(ch_label):
+    idx = int(re.search(r"^(\d+)", label).group()) -1
     match = re.search(r"([A-Za-z]+)(\d+)", label)
     if match:
         base = match.group(1)
         if base not in electrode_dict:
             electrode_dict[base] = []
         electrode_dict[base].append(idx)
+        index_in_electrodepropfile[idx] = i
 
 # Sort indices within each electrode by numeric order
-for base in electrode_dict:
-    electrode_dict[base] = sorted(electrode_dict[base], key=lambda i: int(re.findall(r'\d+', ch_label[i])[0]))
+# for base in electrode_dict:
+#     electrode_dict[base] = sorted(electrode_dict[base], key=lambda i: int(re.findall(r'\d+', ch_label[i])[0]))
 
 # Now build your list of index arrays (one per probe)
 indices_for_probes = list(electrode_dict.values())
@@ -132,11 +129,17 @@ print("✅ rereference complete")
 
 
 # %%
+# plt.plot(reref_data[:,103][::100])
+plt.plot(filt_data[:,99]-filt_data[:,112],lw=0.3,alpha=0.5)
+# plt.plot(filt_data[:,100]-filt_data[:,112],lw=0.3, alpha=0.5)
+plt.plot(filt_data[:,103]-filt_data[:,112], lw=0.3,alpha=0.5)
+
+# %%
 # convolve 
 num_frequencies = 48 #updated to capture more frequencies 11/06/2025
 min_freq = 1  # Hz
 max_freq = 150  # Hz
-num_ch = 16 #### TEMPORARY FOR TESTING 
+num_ch = filt_data.shape[1] #### TEMPORARY FOR TESTING 
 
 freqs = np.logspace(np.log10(min_freq), np.log10(max_freq), num_frequencies)
 wave_num = np.tile(7,(len(freqs),1))
@@ -180,7 +183,7 @@ for i in range(num_frequencies):
 
 # %%
 from plot_preproc_channel import plot_all_channels
-save_dir = f"/userdata/jiahuang/pain-data/Stage1-test/{ptID}/biomarker/preproc_data/preproc_figs"
+save_dir = f"/userdata/jiahuang/pain-data/Stage1-test/{ptID}/biomarker/preproc_data/preproc_figs_052026newreref"
 
 # Make sure directory exists
 import os
@@ -188,7 +191,23 @@ os.makedirs(save_dir, exist_ok=True)
 
 # Use keyword argument for save_dir
 plot_all_channels(filt_data, reref_data, resampled_psd, 
-                 freqs, ch_label, save_dir, channels_to_plot=range(2))
+                 freqs, ch_label, save_dir, channels_to_plot=index_in_electrodepropfile)
+
+# %%
+import re
+savepath = f"/userdata/jiahuang/pain-data/Stage1-test/{ptID}/biomarker/preproc_data/"
+
+h5_filename = re.findall(r"(\d+).h5", filepath)[0] + "_wavelet.h5"
+full_filename = savepath + h5_filename
+print(full_filename)
+
+# %%
+from scipy.stats import zscore
+psd_z = zscore(power_signal_array, axis=1)
+mean_psd = np.nanmean(resampled_psd,axis=1)
+median_psd = np.nanmedian(resampled_psd,axis =1)
+
+psd_z.shape, mean_psd.shape, median_psd.shape
 
 # %%
 # save psd, mean, re-referenced data
@@ -209,7 +228,7 @@ hf = h5py.File(full_filename, 'w')
 hf.create_dataset('decomp_signal', data=resampled_psd)
 
 hf.attrs['description'] = 'data preprocessed: demean, downsample, notch filter, re-reference, PSD computed'
-hf.attrs['filename'] = full_filename
+hf.attrs['filename'] = filepath
 hf.attrs['srate_new'] = srate_new
 hf.attrs['notch_freqs'] = notch_freqs
 hf.attrs['freqs'] = freqs
@@ -227,19 +246,18 @@ hf.attrs['date preprocessed'] = date_string
 hf.close()
 print('wavelet data saved')
 
-
 # %%
 
 ## save in h5 file 
 directory, filename = os.path.split(filepath)
 filename_no_ext, ext = os.path.splitext(filename)
-meanpsd_filename = re.findall(r"(\d+).h5", filepath)[0] + '_meanpsd' + ".h5"
+meanpsd_filename = re.findall(r"(\d+).h5", filepath)[0]+ '_meanpsd' + ".h5"
 
 hf1 = h5py.File(savepath+meanpsd_filename, 'w')
 hf1.create_dataset('mean_psd', data=mean_psd)
 
 hf1.attrs['description'] = 'data preprocessed: demean, downsample, notch filter, re-reference, PSD computed'
-hf1.attrs['filename'] = filename
+hf1.attrs['filename'] = filepath
 hf1.attrs['srate_new'] = srate_new
 hf1.attrs['notch_freqs'] = notch_freqs
 hf1.attrs['freqs'] = freqs
@@ -266,7 +284,7 @@ hf1 = h5py.File(savepath+reref_filename, 'w')
 hf1.create_dataset('re-referenced', data=reref_data)
 
 hf1.attrs['description'] = 'data preprocessed: demean, downsample, notch filter, re-reference, PSD computed'
-hf1.attrs['filename'] = filename
+hf1.attrs['filename'] = filepath
 hf1.attrs['srate_new'] = srate_new
 hf1.attrs['notch_freqs'] = notch_freqs
 hf1.attrs['freqs'] = freqs
