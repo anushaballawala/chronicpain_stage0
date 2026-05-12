@@ -3,6 +3,7 @@ import numpy as np
 import os
 import pickle
 import sys
+from scipy.stats import zscore
 
 def mad_artifact_removal(psd_data, threshold_factor):
     """Use Median Absolute Deviation for robust outlier detection."""
@@ -42,9 +43,9 @@ def main(filepath):
     with h5py.File(filepath, "r") as hf_in:
         # Load [Freq x Time x Channel]
         raw_psd = np.array(hf_in["decomp_signal"], dtype=np.float32)
-        
+        psd_z = zscore(raw_psd, axis=1)
         # Artifact removal
-        cleaned_psd, stats = mad_artifact_removal(raw_psd, threshold_factor=3.5)
+        cleaned_psd, stats = mad_artifact_removal(psd_z, threshold_factor=3.5)
         
         # Collapse Time via nanmean to get Total Power
         mean_psd = np.nanmean(cleaned_psd, axis=1) 
