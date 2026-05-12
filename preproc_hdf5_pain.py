@@ -213,8 +213,16 @@ psd_z.shape, mean_psd.shape, median_psd.shape
 # save psd, mean, re-referenced data
 from scipy.stats import zscore
 psd_z = zscore(power_signal_array, axis=1)
-mean_psd = np.nanmean(resampled_psd,axis=1)
-median_psd = np.nanmedian(resampled_psd,axis =1)
+# mean_psd = np.nanmean(resampled_psd,axis=1)
+# median_psd = np.nanmedian(resampled_psd,axis =1)
+
+from avgpsd_artifact_removal import mad_artifact_removal
+
+psd_clean, stats_artifact = mad_artifact_removal(psd_z,threshold_factor=3.5)
+
+# psd_clean.shape
+
+mean_psd = np.nanmean(psd_clean, axis=1)
 
 savepath = f"/userdata/jiahuang/pain-data/Stage1-test/{ptID}/biomarker/preproc_data/"
 
