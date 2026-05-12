@@ -126,7 +126,7 @@ print("✅ rereference complete")
 
 # reref_clean = np.delete(reref_data, bipolar_zero, 1)
 
-
+del intracranialEEG_data, ch_baseline_demean, ds
 
 # %%
 # plt.plot(reref_data[:,103][::100])
@@ -201,18 +201,11 @@ h5_filename = re.findall(r"(\d+).h5", filepath)[0] + "_wavelet.h5"
 full_filename = savepath + h5_filename
 print(full_filename)
 
-# %%
-from scipy.stats import zscore
-psd_z = zscore(power_signal_array, axis=1)
-mean_psd = np.nanmean(resampled_psd,axis=1)
-median_psd = np.nanmedian(resampled_psd,axis =1)
-
-psd_z.shape, mean_psd.shape, median_psd.shape
 
 # %%
 # save psd, mean, re-referenced data
 from scipy.stats import zscore
-psd_z = zscore(power_signal_array, axis=1)
+psd_z = zscore(resampled_psd, axis=1)
 # mean_psd = np.nanmean(resampled_psd,axis=1)
 # median_psd = np.nanmedian(resampled_psd,axis =1)
 
