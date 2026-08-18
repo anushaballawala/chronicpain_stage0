@@ -3,6 +3,7 @@ import numpy as np
 import os
 import pickle
 import sys
+import glob
 from scipy.stats import zscore
 
 def mad_artifact_removal(psd_data, threshold_factor):
@@ -31,36 +32,35 @@ def mad_artifact_removal(psd_data, threshold_factor):
     stats['overall_percentage'] = (stats['total_removed'] / stats['total_points']) * 100
     return cleaned_psd, stats
 
-def main(filepath):
-    # Output file names
+def process_file(filepath):
     base_dir = os.path.dirname(filepath)
     filename = os.path.basename(filepath)
     output_psd = os.path.join(base_dir, filename.replace("_wavelet.h5", "_meanpsd_clean.h5"))
     output_stats = os.path.join(base_dir, filename.replace("_wavelet.h5", "_artifact_stats.pkl"))
-
-    print(f"Processing: {filename}")
-
+    
+    print(f"  Processing: {filename}")
     with h5py.File(filepath, "r") as hf_in:
-        # Load [Freq x Time x Channel]
         raw_psd = np.array(hf_in["decomp_signal"], dtype=np.float32)
-        psd_z = zscore(raw_psd, axis=1)
-        # Artifact removal
-        cleaned_psd, stats = mad_artifact_removal(psd_z, threshold_factor=3.5)
+        psd_clean, stats = mad_artifact_removal(raw_psd, threshold_factor=3.5)
+        mean_psd = np.nanmean(psd_clean, axis=1)
         
-        # Collapse Time via nanmean to get Total Power
-        mean_psd = np.nanmean(cleaned_psd, axis=1) 
-        
-        # Save Mean PSD
         with h5py.File(output_psd, "w") as hf_out:
             hf_out.create_dataset("mean_psd", data=mean_psd)
             for attr in hf_in.attrs:
                 hf_out.attrs[attr] = hf_in.attrs[attr]
-
-        # Save stats
+        
         with open(output_stats, "wb") as f:
             pickle.dump(stats, f)
     
-    print(f"Done. Removed {stats['overall_percentage']:.2f}% artifacts.")
+    print(f"  Done. Removed {stats['overall_percentage']:.2f}% artifacts.")
+
+def main(ptID):
+    pattern = f"/userdata/jiahuang/pain-data/Stage1-test/{ptID}/biomarker/preproc_data/202605_newpreproc_all_channels/*_wavelet.h5"
+    wavelet_files = glob.glob(pattern)
+    print(f"{ptID}: found {len(wavelet_files)} wavelet files")
+    
+    for filepath in sorted(wavelet_files):
+        process_file(filepath)
 
 if __name__ == "__main__":
     main(sys.argv[1])

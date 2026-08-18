@@ -24,6 +24,7 @@
 import sys
 sys.path.append("/home/jiahuang/test-code-hazel/")
 import gen_fxns
+from plot_pca import plot_pca_loadings
 import h5py
 import numpy as np 
 import matplotlib.pyplot as plt
@@ -39,23 +40,34 @@ import pickle
 import os 
 from datetime import datetime
 
+
 # %%
 behav_score_allpt = {}
 all_data_clean_roi_z_allpt = {}
 all_data_clean_freq_roi_z_allpt = {}
+all_data_clean_freq_z_allpt = {}
+behavior_raw_allpt = {}
+all_channel_labels_allpt = {}
 ch_allpt = {}
-ptIDs = ['RCS02','RCS03','RCS04','RCS05','RCS06','RCS08','RCS09']
+ptIDs = [
+        'RCS02'
+         ,'RCS03','RCS04','RCS05','RCS06','RCS07','RCS08'
+         ,'RCS09'
+        ]
 
 # %%
 for ptID in ptIDs:
-    path_string = f"/userdata/jiahuang/pain-data/Stage1-test/{ptID}/biomarker/preproc_data/all_channels/"
-    fig_save = f"/userdata/jiahuang/pain-data/Stage1-test/{ptID}/"
+    path_string = f"/userdata/jiahuang/pain-data/Stage1-test/{ptID}/biomarker/preproc_data/202605_newpreproc_all_channels/"
+    # fig_save = f"/userdata/jiahuang/pain-data/Stage1-test/{ptID}/meanpsd_mad_072026"
     pt_path = f"/userdata/rvatsyayan/AnushaData/HDF5 Pain Data/{ptID}"
     # pt_path = f"/home/rvatsyayan/AnushaData"
-    electrode_df = pd.read_csv(f"/home/jiahuang/test-code-hazel/{ptID}_new_electrode_property_df.csv")
+    electrode_df = pd.read_csv(f"/home/jiahuang/test-code-hazel/{ptID}_new_electrode_property_df_updated072026.csv")
     data_root = Path(path_string)
-    file_keyword = '_meanpsd'
+    # file_keyword = '_meanpsd_clean'
+    file_keyword = '_meanpsd_clean'
     dataset_name = "mean_psd" # files with mean power spectral density 
+
+    # os.makedirs(fig_save, exist_ok=True)
 
     # hamd_path_string = Path(f"/userdata/rvatsyayan/AnushaData/HDF5 HAMD Data/{ptID}") 
     # hamd_data_root = Path(hamd_path_string)
@@ -76,7 +88,8 @@ for ptID in ptIDs:
         # hamd_files = sorted(os.listdir(hamd_path), key=extract_number)
         
         for filename in files:
-            if filename.endswith('.h5') and file_keyword in filename:
+            if filename.endswith('_meanpsd_clean.h5'):
+            # and file_keyword in filename:
                 # Construct the full file path
                 filepath = os.path.join(path_string, filename)
                 print(filepath)
@@ -85,20 +98,15 @@ for ptID in ptIDs:
                     # Assuming you want to load the first dataset from each file
                     # Load the dataset as float32
                     dataset = np.array(hf[dataset_name], dtype=np.float32)
+                    
+                    # raw_psd = np.array(hf["decomp_signal"], dtype=np.float32)
+                    # psd_clean, stats = mad_artifact_removal(raw_psd, threshold_factor=3.5)
+                    # mean_psd = np.nanmean(psd_clean, axis=1)
+
                     # Append the dataset to the list
                     h5_arrays.append(dataset)
+                    # h5_arrays.append(mean_psd)
 
-        # for filename in hamd_files:
-        #     if filename.endswith('.h5'):
-        #         # Construct the full file path
-        #         filepath = os.path.join(hamd_path_string, filename)
-        #         # Load the .h5 file
-        #         with h5py.File(filepath, 'r') as hf:
-        #             # Assuming you want to load the first dataset from each file
-        #             # Load the dataset as float32
-        #             sum_hamd = int(hf['hamd_info'][8][0])
-        #             # Append the dataset to the list
-        #             hamd_arrays[int(hf['hamd_info'][0][0])]=sum_hamd
 
         files = sorted(os.listdir(pt_path), key=extract_number)
         for filename in files:
@@ -112,14 +120,6 @@ for ptID in ptIDs:
         print(fileids)
 
         return h5_arrays, fileids, hamd_arrays
-
-
-
-    # try:
-    #     loaded_datasets = load_h5_files(directory_path, keyword, dataset_name)
-    #     # Now you can work with loaded_datasets
-    # except FileNotFoundError:
-    #     print(f"Directory '{directory_path}' not found.")
 
     h5_arrays,fileids, hamd_arrays = load_h5_files(path_string, pt_path, file_keyword, dataset_name)
 
@@ -156,13 +156,13 @@ for ptID in ptIDs:
     removed = [i for i in range(all_data.shape[1]) if np.any(all_data[:,i,:])==0]
     print((removed))
 
-    electrode_df = pd.read_csv(f"/home/jiahuang/test-code-hazel/{ptID}_new_electrode_property_df.csv")
+    electrode_df = pd.read_csv(f"/home/jiahuang/test-code-hazel/{ptID}_new_electrode_property_df_updated072026.csv")
 
     electrode_df["edf_ch_idx"] = (
         electrode_df["EDF Channel Number"]
-        .astype(str)
-        .str.replace(r"[^\d]", "", regex=True)
-        .astype(int)
+        # .astype(str)
+        # .str.replace(r"[^\d]", "", regex=True)
+        # .astype(int)
         - 1
     )
     electrode_df_idx = [i for i in range(electrode_df.shape[0]) if str(electrode_df['New ROI Label Hazel'][i])!='nan']
@@ -278,23 +278,7 @@ for ptID in ptIDs:
 
     new_surveys = new_surveys.loc[mask_valid,:]
     print(new_surveys.shape)
-    
-    # nan_idx_all  = np.unique(np.concatenate([nan_idx_vasd, nan_idx_nrs,nan_idx_aff]))
-    # rcs08: 
-    # rcs09: 
-    # print(nan_idx_all, len(nan_idx_all))
 
-    # # clean up surveys from nans. 
-    # vasd_z_clean = np.delete(vasd_z, [nan_idx_all], axis = 0)
-    # vasp_z_clean = np.delete(vasp_z, [nan_idx_all], axis = 0)
-    # nrs_z_clean = np.delete(nrs_z, [nan_idx_all], axis = 0)
-    # affective_z_clean = np.delete(affective_z, [nan_idx_all], axis = 0)
-    # somatic_z_clean = np.delete(somatic_z, [nan_idx_all], axis = 0)
-    # unpleasant_z_clean = np.delete(unpleasantness_z,[nan_idx_all], axis=0)
-
-    # remove nans. 
-    # new_surveys = new_surveys.drop(new_surveys.index[nan_idx_all], axis=0) # remove by positional index clean_psd_z= np.delete(psd_z_vec, nan_idx_all, axis=1)
-    # print(new_surveys.shape)
 
     # # PCA behavioral composite score
     from sklearn.decomposition import PCA
@@ -311,11 +295,154 @@ for ptID in ptIDs:
         var_labels = ['vasd-r','unpleasantness','mpq-affective','vasp','nrs','mpq-somatic']
 
     model = PCA(n_components=3)
-    model.fit(X_score)
     pca_stack_score = model.fit_transform(X_score)
 
-    # behav_score_allpt[ptID] = model.fit_transform(X_score)
+    from sklearn.decomposition import PCA
+    import numpy as np
 
+    if ptID == 'RCS08':
+
+        X_sensory = np.stack([
+            vasp_z_clean,
+            nrs_z_clean,
+            somatic_z_clean
+        ], axis=1)
+
+        sensory_labels = [
+            'vasp',
+            'nrs',
+            'mpq-somatic'
+        ]
+
+        sensory_pca = PCA(n_components=3)
+        sensory_latent = sensory_pca.fit_transform(X_sensory)
+
+        X_affective = np.stack([
+            unpleasant_z_clean,
+            affective_z_clean
+        ], axis=1)
+
+        affective_labels = [
+            'unpleasantness',
+            'mpq-affective'
+        ]
+
+        affective_pca = PCA(n_components=2)
+        affective_latent = affective_pca.fit_transform(X_affective)
+
+    elif ptID == 'RCS09':
+        X_sensory = np.stack([
+            vasp_z_clean,
+            nrs_z_clean,
+            somatic_z_clean
+        ], axis=1)
+
+        sensory_labels = [
+            'vasp',
+            'nrs',
+            'mpq-somatic'
+        ]
+
+        sensory_pca = PCA(n_components=3)
+        sensory_latent = sensory_pca.fit_transform(X_sensory)
+
+        X_affective = np.stack([
+            unpleasant_z_clean
+        ], axis=1)
+
+        affective_labels = [
+            'unpleasantness'
+        ]
+
+        affective_latent = unpleasant_z_clean.copy()
+
+
+    else:
+        X_sensory = np.stack([
+            vasp_z_clean,
+            nrs_z_clean,
+            somatic_z_clean
+        ], axis=1)
+
+        sensory_labels = [
+            'vasp',
+            'nrs',
+            'mpq-somatic'
+        ]
+
+        sensory_pca = PCA(n_components=3)
+        sensory_latent = sensory_pca.fit_transform(X_sensory)
+
+        X_affective = np.stack([
+            -vasd_z_clean,
+            unpleasant_z_clean,
+            affective_z_clean
+        ], axis=1)
+
+        affective_labels = [
+            'vasd-r',
+            'unpleasantness',
+            'mpq-affective'
+        ]
+
+        affective_pca = PCA(n_components=3)
+        affective_latent = affective_pca.fit_transform(X_affective)
+
+    # ============================================
+    # STORE PCA RESULTS
+    # ============================================
+
+    pca_results = {}
+
+    pca_results['all'] = {
+        'model':model,
+        'scores':pca_stack_score,
+        'loadings': model.components_,
+        'variance_explained': model.explained_variance_ratio_,
+        'labels': var_labels
+    }
+    pca_results['sensory'] = {
+        'model': sensory_pca,
+        'scores': sensory_latent,
+        'loadings': sensory_pca.components_,
+        'variance_explained': sensory_pca.explained_variance_ratio_,
+        'labels': sensory_labels
+    }
+
+    if ptID != 'RCS09':
+        pca_results['affective'] = {
+            'model': affective_pca,
+            'scores': affective_latent,
+            'loadings': affective_pca.components_,
+            'variance_explained': affective_pca.explained_variance_ratio_,
+            'labels': affective_labels
+        }
+    else:
+        pca_results['affective'] = {
+            'scores': affective_latent,
+            'labels': affective_labels
+        }
+
+    # plot_pca_loadings(
+    #     sensory_pca,
+    #     sensory_labels,
+    #     title=f'{ptID} Sensory PCA',
+    #     save_path=f'{fig_save}/{ptID}_sensory_pca.png'
+    # )
+    # plot_pca_loadings(
+    #     model,
+    #     var_labels,
+    #     title=f'{ptID} All Behavior PCA',
+    #     save_path=f'{fig_save}/{ptID}_allbehav_pca.png'
+    # )
+
+    # if ptID != 'RCS09':
+    #     plot_pca_loadings(
+    #         affective_pca,
+    #         affective_labels,
+    #         title=f'{ptID} Affective PCA',
+    #         save_path=f'{fig_save}/{ptID}_affective_pca.png'
+    #     )
     # %%
     # import matplotlib.gridspec as gridspec
     # variance_explained = model.explained_variance_ratio_*100
@@ -370,7 +497,7 @@ for ptID in ptIDs:
     new_labels_bi = ['L '+nl for nl in new_labels] + ['R '+ nl for nl in new_labels]
 
     # Dimension reduction of all_data
-    clean_alldata = all_data[:,:,idx_missing_surveys]
+    clean_alldata = psd_z[:,:,idx_missing_surveys]
     clean_alldata= clean_alldata[:,:,mask_valid]
     # clean_alldata = clean_alldata[:,missing_channels,:]
     print(clean_alldata.shape)
@@ -378,7 +505,7 @@ for ptID in ptIDs:
     n_trials = clean_alldata.shape[2]
 
     band_data = np.zeros((6, n_ch_all, n_trials))
-    bandref = {'delta':(1,4), 'theta':(5,8), 'alpha':(9,12), 'beta':(13,30), 'low gamma':(31,70), 'high gamma':(71,150)}
+    bandref = {'delta':(1,4), 'theta':(4,8), 'alpha':(8,12), 'beta':(12,30), 'low gamma':(30,70), 'high gamma':(70,150)}
     bands = list(bandref.keys())
 
     import re
@@ -397,7 +524,7 @@ for ptID in ptIDs:
         band = bands[b]
         (fmin, fmax) = bandref[band]
         idxf = np.where((freqs >= fmin) & (freqs <= fmax))[0]
-        band_data[b, :, :] = np.mean(clean_alldata[idxf, :, :], axis=0)
+        band_data[b, :, :] = np.nanmean(clean_alldata[idxf, :, :], axis=0)
 
     large_ROI = list(electrode_indices_by_ROI.keys())
     ch_data = np.zeros((len(bands), len(large_ROI), n_trials))
@@ -405,30 +532,69 @@ for ptID in ptIDs:
     for i in range(len(large_ROI)):
         ch = large_ROI[i]
         idxc = electrode_indices_by_ROI[ch]
-        ch_data[:,i,:] = np.mean(band_data[:, idxc, :], axis = 1)
+        ch_data[:,i,:] = np.nanmean(band_data[:, idxc, :], axis = 1)
 
     ch_data_new = np.zeros((len(freqs), len(large_ROI), n_trials))
 
     for i in range(len(large_ROI)):
         ch = large_ROI[i]
         idxc = electrode_indices_by_ROI[ch]
-        ch_data_new[:,i,:] = np.mean(clean_alldata[:, idxc, :], axis = 1)
+        ch_data_new[:,i,:] = np.nanmean(clean_alldata[:, idxc, :], axis = 1)
+
+
+    all_channel_labels = (
+        electrode_df_clean["New ROI Label Hazel"].astype(str) + "_" + electrode_df_clean.groupby("New ROI Label Hazel").cumcount().add(1).astype(str)
+    ).tolist()    
+
+    print(all_channel_labels)
+    print(save_idx_sorted_clean)
+    all_channel_labels_allpt[ptID] = all_channel_labels
+    band_data_temp = band_data[:,save_idx_sorted_clean,:]
+    channel_mean_psd = np.nanmean(band_data_temp, axis=2)
+
+    # plt.figure(figsize=(16,8))
+
+    # sns.heatmap(channel_mean_psd,cmap='RdBu_r',
+    #             yticklabels=bands,
+    #             xticklabels=all_channel_labels
+    # )
+
+    # plt.ylabel("Frequency")
+    # plt.xlabel("Channel")
+
+    # plt.title(f"202607 {ptID} All Channel Freq Bands zPSD Heatmap ")
+
+    # plt.tight_layout()
+
+    # plt.savefig(
+    #     f"{fig_save}/202607 {ptID}_All_Channel_Canonical_Freq zPSD.png",
+    #     dpi=300
+    # )
+
+    # plt.close()
         
     all_data_clean_freq_roi = zscore(ch_data, axis = 2)
     all_data_clean_freq_roi_z = all_data_clean_freq_roi.reshape(len(bands)*len(large_ROI), n_trials).T
-    all_data_clean_roi_z = zscore(ch_data_new, axis=1).reshape(len(freqs)*len(large_ROI), n_trials).T
+    all_data_clean_roi_z = zscore(ch_data_new, axis=2).reshape(len(freqs)*len(large_ROI), n_trials).T
 
     print(large_ROI)
     print(all_data_clean_freq_roi_z.shape)
 
     # %%
+    all_data_clean_freq_z_allpt[ptID] = channel_mean_psd
     all_data_clean_roi_z_allpt[ptID] = all_data_clean_roi_z
     all_data_clean_freq_roi_z_allpt[ptID] = all_data_clean_freq_roi_z
     ch_allpt[ptID] = large_ROI
-    behav_score_allpt[ptID] = pca_stack_score
-    # behav_score_allpt[ptID] = sum_score
-    # behav_score_allpt[ptID] = pca_stack_score
-    # pca_var[ptID] = model.explained_variance_ratio_
+    behav_score_allpt[ptID] = pca_results
+    behavior_raw_allpt[ptID] = {
+        # 'affective': affective_z_clean,
+                                'nrs': nrs_z_clean,
+                                'vasd-r': -vasd_z_clean,
+                                'mpq-somatic':somatic_z_clean,
+                                'vasp': vasp_z_clean,
+                                'mpq-affective': affective_z_clean,
+                                'unpleasantness': unpleasant_z_clean
+                                }
 
     # %%
     # Behavior score correlation
@@ -474,16 +640,16 @@ for ptID in ptIDs:
             'MPQ-somatic-z': somatic_z_clean
         })
     # sns.set_theme('paper')
-    g = sns.PairGrid(score_df)
-    g.map_diag(sns.histplot)
-    g.map_offdiag(sns.regplot,scatter_kws={'s': 10},robust=False)
-    g.map_offdiag(annotate_r2)
-    g.fig.suptitle(f"{ptID} Behvaior Score Correlation",y=1.02)
-    g.fig.savefig(f"{fig_save}{ptID}_behavior_score_correlation.png", dpi=300, bbox_inches='tight')
+    # g = sns.PairGrid(score_df)
+    # g.map_diag(sns.histplot)
+    # g.map_offdiag(sns.regplot,scatter_kws={'s': 10},robust=False)
+    # g.map_offdiag(annotate_r2)
+    # g.fig.suptitle(f"{ptID} Behvaior Score Correlation",y=1.02)
+    # g.fig.savefig(f"{fig_save}{ptID}_behavior_score_correlation.png", dpi=300, bbox_inches='tight')
 
 
 sys.path.append("/home/jiahuang/test-code-hazel/gen_fxns/")
-savepath = f"/userdata/jiahuang/pain-data/figures/Stage1-test/"
+savepath = f"/userdata/jiahuang/pain-data/figures/Stage1-test/072026-newpreproc/meanpsd_mad_final"
 import os
 os.makedirs(savepath, exist_ok=True)
 
@@ -507,7 +673,7 @@ def basic_heatmap(ax, array, ch_labels, freqs, cbar_title, title, save=False):
     ax.set_ylabel("Channel")
     ax.set_title(title)
     ax.set_yticklabels(ax.get_yticklabels(), fontsize=7)
-    if save: plt.savefig(f"{savepath}{title}.png")
+    if save: plt.savefig(f"{savepath}/{title}.png")
 
 def basic_heatmap_onlyone(array, ch_labels, freqs, cbar_title, title, save=False, savepath=""):
     plt.figure(figsize=(8, 12))
@@ -536,7 +702,7 @@ def basic_heatmap_onlyone(array, ch_labels, freqs, cbar_title, title, save=False
     plt.tight_layout()
 
     if save:
-        plt.savefig(f"{savepath}{title}.png", dpi=300, bbox_inches='tight')
+        plt.savefig(f"{savepath}/{title}.png", dpi=300, bbox_inches='tight')
 
     plt.close()
 
@@ -558,7 +724,7 @@ def plot_heatmap_subplots(data_list, ch_labels, freqs, cbar_titles, titles, save
         basic_heatmap(axes[i], array, ch_label, freqs, cbar_title, title)
 
     plt.tight_layout()
-    save_dir = f"/userdata/jiahuang/pain-data/figures/Stage1-test/{savetitle}"
+    save_dir = f"{savepath}/{savetitle}"
 
     plt.savefig(save_dir, dpi=300, edgecolor='k', facecolor="white")
     plt.show()
@@ -585,6 +751,51 @@ def corr_permutation(X, Y, n_freq, n_ch, n_perm=1000):
     p = np.mean(np.abs(corr_null) >= np.abs(corr_real),axis=0).reshape(n_freq,n_ch)
     return corr_real, p
 
+from statsmodels.stats.multitest import fdrcorrection
+
+def fdr_mask(corr, pvals, alpha=0.05):
+
+    p_flat = pvals.flatten()
+
+    reject, p_fdr = fdrcorrection(
+        p_flat,
+        alpha=alpha
+    )
+
+    reject = reject.reshape(pvals.shape)
+
+    corr_fdr = np.where(
+        reject,
+        corr,
+        np.nan
+    )
+
+    return corr_fdr, reject
+
+
+def fdr_mask_roiwise(corr, pvals, alpha=0.05):
+
+    n_freq, n_roi = pvals.shape
+
+    reject_all = np.zeros_like(pvals, dtype=bool)
+
+    for roi in range(n_roi):
+
+        reject_roi, _ = fdrcorrection(
+            pvals[:, roi],
+            alpha=alpha
+        )
+
+        reject_all[:, roi] = reject_roi
+
+    corr_fdr = np.where(
+        reject_all,
+        corr,
+        np.nan
+    )
+
+    return corr_fdr, reject_all
+
 def make_no_data_ch_nan(data, large_ROI):
     full = np.full((data.shape[0], 20), np.nan)
     for j, roi in enumerate(new_labels_bi):
@@ -593,18 +804,213 @@ def make_no_data_ch_nan(data, large_ROI):
             full[:, j] = data[:, idx]
     return full
 
-corr_pca_allpt = {}
-corr_pca2_allpt = {}
-for pt in ptIDs:
-    corr_pca, perm_p = corr_permutation(all_data_clean_freq_roi_z_allpt[pt], behav_score_allpt[pt][:,0], len(bands), len(ch_allpt[pt]))
-    corr_pca_mask = np.where(perm_p>0.05, np.nan, corr_pca)
-    corr_pca_allpt[pt] = make_no_data_ch_nan(corr_pca_mask, ch_allpt[pt])
-    corr_pca2, perm_p = corr_permutation(all_data_clean_freq_roi_z_allpt[pt], behav_score_allpt[pt][:,1], len(bands), len(ch_allpt[pt]))
-    corr_pca2_mask = np.where(perm_p>0.05, np.nan, corr_pca2)
-    corr_pca2_allpt[pt] = make_no_data_ch_nan(corr_pca2_mask, ch_allpt[pt])
-    basic_heatmap_onlyone(corr_pca_allpt[pt],ch_allpt[pt],canonical_freq,'Corr',f'PSD vs PCA comp1 behavioral {pt} FINAL LABEL',True,savepath)
-    basic_heatmap_onlyone(corr_pca_allpt[pt],ch_allpt[pt],canonical_freq,'Corr',f'PSD vs PCA comp2 behavioral {pt} FINAL LABEL',True,savepath)
-plot_heatmap_subplots([corr_pca_allpt['RCS02'], corr_pca_allpt['RCS03'], corr_pca_allpt['RCS04'], corr_pca_allpt['RCS05'], corr_pca_allpt['RCS06'],corr_pca_allpt['RCS08'],corr_pca_allpt['RCS09']], list(dict(sorted(ch_allpt.items())).values()), canonical_freq, ['Corr', 'Corr', 'Corr','Corr','Corr', 'Corr','Corr'], ['PSD vs PCA1 behavioral RCS02', 'PSD vs PCA1 behavioral RCS03', 'PSD vs PCA1 behavioral RCS04', 'PSD vs PCA1 behavioral RCS05', 'PSD vs PCA1 behavioral RCS06','PSD vs PCA1 behavioral RCS08','PSD vs PCA1 behavioral RCS09'], "04282026 FINAL Masked Canonical chanel roi correlation till rcs09 - PCA behavioral 6 var comp1- new label - permutation ", nrows=2, ncols=4)
-plot_heatmap_subplots([corr_pca2_allpt['RCS02'], corr_pca2_allpt['RCS03'], corr_pca2_allpt['RCS04'], corr_pca2_allpt['RCS05'], corr_pca2_allpt['RCS06'],corr_pca2_allpt['RCS08'], corr_pca2_allpt['RCS09']], list(dict(sorted(ch_allpt.items())).values()), canonical_freq, ['Corr', 'Corr', 'Corr','Corr','Corr', 'Corr','Corr'], ['PSD vs PCA2 behavioral RCS02', 'PSD vs PCA2 behavioral RCS03', 'PSD vs PCA2 behavioral RCS04', 'PSD vs PCA2 behavioral RCS05', 'PSD vs PCA2 behavioral RCS06','PSD vs PCA2 behavioral RCS08','PSD vs PCA2 behavioral RCS09'], "04282026 FINAL Masked all freq roi correlation till rcs09 - PCA behavioral 6 var comp2 - new label - permutation ", nrows=2, ncols=4)
+def get_behavior_score(pt_dict, behavior_type):
 
+    if behavior_type == 'all':
+        return pt_dict['all']['scores'][:,0]
+
+    elif behavior_type == 'sensory':
+        return pt_dict['sensory']['scores'][:,0]
+
+    elif behavior_type == 'affective':
+
+        if len(pt_dict['affective']['scores'].shape) == 1:
+            return pt_dict['affective']['scores']
+
+        return pt_dict['affective']['scores'][:,0]
+
+corr_band_allpt = {
+    'all': {},
+    'sensory': {},
+    'affective': {}
+}
+
+corr_raw_allpt = {
+    'all': {},
+    'sensory': {},
+    'affective': {}
+}
+
+corr_pca_allpt  = {}
+corr_pca2_allpt = {}
+corr2_pca_allpt  = {}
+corr2_pca2_allpt = {}
+
+behavior_types = ['all', 'sensory', 'affective']
+
+for pt in ptIDs:
+    for k, y in (behavior_raw_allpt[pt].items()):
+        corr_raw_onebehav, perm_p_onebehav = corr_permutation(
+            all_data_clean_freq_roi_z_allpt[pt],
+            y,
+            len(bands),
+            len(ch_allpt[pt])
+        )
+        corr_raw_onebehav_uncorrected = np.where(
+            perm_p_onebehav > 0.05,
+            np.nan,
+            corr_raw_onebehav
+        )
+        basic_heatmap_onlyone(make_no_data_ch_nan(corr_raw_onebehav_uncorrected,ch_allpt[pt]), ch_allpt[pt],canonical_freq,
+                                'Corr',f'20260602 {pt} Canonical zPSD vs {k}', True, savepath)
+        
+# plot_heatmap_subplots([corr_raw_allpt[behavior][pt]['raw'] for pt in ptIDs], [ch_allpt[pt] for pt in ptIDs],
+#                         freqs, ['Corr'] * len(ptIDs), [f'{pt} {behavior}' for pt in ptIDs],
+#                         f'20260602 Group All Freq Corr Raw - {behavior}', nrows=2, ncols=4 ) 
+            
+for pt in ptIDs:
+    for behavior in behavior_types:
+        y = get_behavior_score(
+            behav_score_allpt[pt],
+            behavior
+        )
+
+        # =====================================
+        # CANONICAL BAND PSD
+        # =====================================
+
+        corr_band, perm_p = corr_permutation(
+            all_data_clean_freq_roi_z_allpt[pt],
+            y,
+            len(bands),
+            len(ch_allpt[pt])
+        )
+
+        # =====================================
+        # uncorrected
+        # =====================================
+
+        corr_band_uncorrected = np.where(
+            perm_p > 0.05,
+            np.nan,
+            corr_band
+        )
+
+        # =====================================
+        # FDR corrected
+        # =====================================
+
+        corr_band_fdr, reject_fdr = fdr_mask_roiwise(
+            corr_band,
+            perm_p
+        )
+
+        corr_band_allpt[behavior][pt] = {
+            'uncorrected': make_no_data_ch_nan(
+                corr_band_uncorrected,
+                ch_allpt[pt]
+            ),
+
+            'fdr': make_no_data_ch_nan(
+                corr_band_fdr,
+                ch_allpt[pt]
+            ),
+            'raw': make_no_data_ch_nan(corr_band, ch_allpt[pt])
+        }
+
+        basic_heatmap_onlyone(corr_band_allpt[behavior][pt]['uncorrected'],ch_allpt[pt],canonical_freq,
+                            'Corr', f'{pt} Canonical zPSD vs {behavior} PC1 Uncorrected', True, savepath)
+        basic_heatmap_onlyone(corr_band_allpt[behavior][pt]['fdr'],ch_allpt[pt],canonical_freq,
+                            'Corr', f'{pt} Canonical zPSD vs {behavior} PC1 ROI FDR', True, savepath)
+        basic_heatmap_onlyone(corr_band_allpt[behavior][pt]['raw'],ch_allpt[pt],canonical_freq,
+                            'Corr', f'{pt} Canonical zPSD vs {behavior} PC1 Raw', True, savepath)
+
+
+        # =====================================
+        # RAW FREQ PSD
+        # =====================================
+
+        corr_raw, perm_p = corr_permutation(
+            all_data_clean_roi_z_allpt[pt],
+            y,
+            len(freqs),
+            len(ch_allpt[pt])
+        )
+
+        corr_raw_uncorrected = np.where(
+            perm_p > 0.05,
+            np.nan,
+            corr_raw
+        )
+
+        corr_raw_fdr, reject_fdr = fdr_mask_roiwise(
+            corr_raw,
+            perm_p
+        )
+
+        corr_raw_allpt[behavior][pt] = {
+            'uncorrected': make_no_data_ch_nan(
+                corr_raw_uncorrected,
+                ch_allpt[pt]
+            ),
+
+            'fdr': make_no_data_ch_nan(
+                corr_raw_fdr,
+                ch_allpt[pt]
+            ),
+            'raw': make_no_data_ch_nan(corr_raw, ch_allpt[pt])
+        }
+        basic_heatmap_onlyone(corr_raw_allpt[behavior][pt]['uncorrected'],ch_allpt[pt],freqs,
+                            'Corr', f'{pt} All channel zPSD vs {behavior} PC1 Uncorrected', True, savepath)
+        basic_heatmap_onlyone(corr_raw_allpt[behavior][pt]['fdr'],ch_allpt[pt],freqs,
+                            'Corr', f'{pt} All channel zPSD vs {behavior} PC1 ROI FDR', True, savepath)
+        basic_heatmap_onlyone(corr_raw_allpt[behavior][pt]['raw'],ch_allpt[pt],freqs,
+                            'Corr', f'{pt} All channel zPSD vs {behavior} PC1 Raw', True, savepath)
+
+for behavior in behavior_types:
+
+    plot_heatmap_subplots([corr_band_allpt[behavior][pt]['uncorrected'] for pt in ptIDs], [ch_allpt[pt] for pt in ptIDs],
+                            canonical_freq, ['Corr'] * len(ptIDs), [f'{pt} {behavior}' for pt in ptIDs],
+                            f'20260602 Group Canonical Freq Corr Uncorrected - {behavior}', nrows=2, ncols=4 )
+
+    plot_heatmap_subplots([corr_band_allpt[behavior][pt]['fdr'] for pt in ptIDs], [ch_allpt[pt] for pt in ptIDs],
+                            canonical_freq, ['Corr'] * len(ptIDs), [f'{pt} {behavior}' for pt in ptIDs],
+                            f'20260602 Group Canonical Freq Corr ROI FDR Corrected - {behavior}', nrows=2, ncols=4 )
+
+    plot_heatmap_subplots([corr_band_allpt[behavior][pt]['raw'] for pt in ptIDs], [ch_allpt[pt] for pt in ptIDs],
+                            canonical_freq, ['Corr'] * len(ptIDs), [f'{pt} {behavior}' for pt in ptIDs],
+                            f'20260602 Group Canonical Freq Corr Raw - {behavior}', nrows=2, ncols=4 )                       
+
+    plot_heatmap_subplots([corr_raw_allpt[behavior][pt]['uncorrected'] for pt in ptIDs], [ch_allpt[pt] for pt in ptIDs],
+                            freqs, ['Corr'] * len(ptIDs), [f'{pt} {behavior}' for pt in ptIDs],
+                            f'20260602 Group All Freq Corr Uncorrected - {behavior}', nrows=2, ncols=4 )
+    
+    plot_heatmap_subplots([corr_raw_allpt[behavior][pt]['fdr'] for pt in ptIDs], [ch_allpt[pt] for pt in ptIDs],
+                            freqs, ['Corr'] * len(ptIDs), [f'{pt} {behavior}' for pt in ptIDs],
+                            f'20260602 Group All Freq Corr ROI FDR Corrected - {behavior}', nrows=2, ncols=4 )
+
+    plot_heatmap_subplots([corr_raw_allpt[behavior][pt]['raw'] for pt in ptIDs], [ch_allpt[pt] for pt in ptIDs],
+                            freqs, ['Corr'] * len(ptIDs), [f'{pt} {behavior}' for pt in ptIDs],
+                            f'20260602 Group All Freq Corr Raw - {behavior}', nrows=2, ncols=4 )                       
+
+# for pt in ptIDs:
+#     corr_pca, perm_p = corr_permutation(all_data_clean_freq_roi_z_allpt[pt], behav_score_allpt[pt][:,0], len(bands), len(ch_allpt[pt]))
+#     corr_pca_mask = np.where(perm_p>0.05, np.nan, corr_pca)
+#     corr_pca_allpt[pt] = make_no_data_ch_nan(corr_pca_mask, ch_allpt[pt])
+#     corr_pca2, perm_p = corr_permutation(all_data_clean_freq_roi_z_allpt[pt], behav_score_allpt[pt][:,1], len(bands), len(ch_allpt[pt]))
+#     corr_pca2_mask = np.where(perm_p>0.05, np.nan, corr_pca2)
+#     corr_pca2_allpt[pt] = make_no_data_ch_nan(corr_pca2_mask, ch_allpt[pt])
+#     basic_heatmap_onlyone(corr_pca_allpt[pt],ch_allpt[pt],canonical_freq,'Corr',f'PSD vs PCA comp1 behavioral {pt} FINAL FINAL NEW PREPROC LABEL 052026',True,savepath)
+#     basic_heatmap_onlyone(corr_pca2_allpt[pt],ch_allpt[pt],canonical_freq,'Corr',f'PSD vs PCA comp2 behavioral {pt} FINAL FINAL NEW PREPROC LABEL 052026',True,savepath)
+
+#     corr2_pca, perm_p = corr_permutation(all_data_clean_roi_z_allpt[pt], behav_score_allpt[pt][:,0], len(freqs), len(ch_allpt[pt]))
+#     corr_pca_mask = np.where(perm_p>0.05, np.nan, corr_pca)
+#     corr2_pca_allpt[pt] = make_no_data_ch_nan(corr_pca_mask, ch_allpt[pt])
+#     corr2_pca2, perm_p = corr_permutation(all_data_clean_roi_z_allpt[pt], behav_score_allpt[pt][:,1], len(freqs), len(ch_allpt[pt]))
+#     corr_pca2_mask = np.where(perm_p>0.05, np.nan, corr_pca2)
+#     corr2_pca2_allpt[pt] = make_no_data_ch_nan(corr_pca2_mask, ch_allpt[pt])
+#     basic_heatmap_onlyone(corr2_pca_allpt[pt],ch_allpt[pt],freqs,'Corr',f'PSD vs PCA comp1 behavioral {pt} FINAL FINAL NEW PREPROC LABEL 052026 raw freq',True,savepath)
+#     basic_heatmap_onlyone(corr2_pca2_allpt[pt],ch_allpt[pt],freqs,'Corr',f'PSD vs PCA comp2 behavioral {pt} FINAL FINAL NEW PREPROC LABEL 052026 raw freq',True,savepath)
+
+# plot_heatmap_subplots([corr_pca_allpt['RCS02'], corr_pca_allpt['RCS03'], corr_pca_allpt['RCS04'], corr_pca_allpt['RCS05'], corr_pca_allpt['RCS06'],corr_pca_allpt['RCS07'],corr_pca_allpt['RCS08'],corr_pca_allpt['RCS09']], list(dict(sorted(ch_allpt.items())).values()), canonical_freq, ['Corr','Corr', 'Corr', 'Corr','Corr','Corr', 'Corr','Corr'], ['PSD vs PCA1 behavioral RCS02', 'PSD vs PCA1 behavioral RCS03', 'PSD vs PCA1 behavioral RCS04', 'PSD vs PCA1 behavioral RCS05', 'PSD vs PCA1 behavioral RCS06','PSD vs PCA1 behavioral RCS07','PSD vs PCA1 behavioral RCS08','PSD vs PCA1 behavioral RCS09'], "07122026 FINAL PREPROC Masked Canonical chanel roi correlation till rcs09 - PCA behavioral 6 var comp1- new label - permutation ", nrows=2, ncols=4)
+# plot_heatmap_subplots([corr_pca2_allpt['RCS02'], corr_pca2_allpt['RCS03'], corr_pca2_allpt['RCS04'], corr_pca2_allpt['RCS05'], corr_pca2_allpt['RCS06'],corr_pca2_allpt['RCS07'],corr_pca2_allpt['RCS08'], corr_pca2_allpt['RCS09']], list(dict(sorted(ch_allpt.items())).values()), canonical_freq, ['Corr','Corr', 'Corr', 'Corr','Corr','Corr', 'Corr','Corr'], ['PSD vs PCA2 behavioral RCS02', 'PSD vs PCA2 behavioral RCS03', 'PSD vs PCA2 behavioral RCS04', 'PSD vs PCA2 behavioral RCS05', 'PSD vs PCA2 behavioral RCS06','PSD vs PCA2 behavioral RCS07','PSD vs PCA2 behavioral RCS08','PSD vs PCA2 behavioral RCS09'], "07122026 FINAL PREPROC Masked Canonical chanel roi correlation till rcs09 - PCA behavioral 6 var comp2 - new label - permutation ", nrows=2, ncols=4)
+
+# plot_heatmap_subplots([corr2_pca_allpt['RCS02'], corr2_pca_allpt['RCS03'], corr2_pca_allpt['RCS04'], corr2_pca_allpt['RCS05'], corr2_pca_allpt['RCS06'],corr2_pca_allpt['RCS07'],corr2_pca_allpt['RCS08'],corr2_pca_allpt['RCS09']], list(dict(sorted(ch_allpt.items())).values()), freqs, ['Corr', 'Corr','Corr', 'Corr','Corr','Corr', 'Corr','Corr'], ['PSD vs PCA1 behavioral RCS02', 'PSD vs PCA1 behavioral RCS03', 'PSD vs PCA1 behavioral RCS04', 'PSD vs PCA1 behavioral RCS05', 'PSD vs PCA1 behavioral RCS06','PSD vs PCA1 behavioral RCS07','PSD vs PCA1 behavioral RCS08','PSD vs PCA1 behavioral RCS09'], "07122026 FINAL PREPROC Masked all freq roi correlation till rcs09 - PCA behavioral 6 var comp1- new label - permutation ", nrows=2, ncols=4)
+# plot_heatmap_subplots([corr2_pca2_allpt['RCS02'], corr2_pca2_allpt['RCS03'], corr2_pca2_allpt['RCS04'], corr2_pca2_allpt['RCS05'], corr2_pca2_allpt['RCS06'],corr2_pca2_allpt['RCS07'],corr2_pca2_allpt['RCS08'], corr2_pca2_allpt['RCS09']], list(dict(sorted(ch_allpt.items())).values()), freqs, ['Corr', 'Corr','Corr', 'Corr','Corr','Corr', 'Corr','Corr'], ['PSD vs PCA2 behavioral RCS02', 'PSD vs PCA2 behavioral RCS03', 'PSD vs PCA2 behavioral RCS04', 'PSD vs PCA2 behavioral RCS05', 'PSD vs PCA2 behavioral RCS06','PSD vs PCA2 behavioral RCS07','PSD vs PCA2 behavioral RCS08','PSD vs PCA2 behavioral RCS09'], "07122026 FINAL PREPROC Masked all freq roi correlation till rcs09 - PCA behavioral 6 var comp2 - new label - permutation ", nrows=2, ncols=4)
+
+# plot_heatmap_subplots([corr_pca_allpt['RCS02'], corr_pca_allpt['RCS03'], corr_pca_allpt['RCS04'], corr_pca_allpt['RCS05'], corr_pca_allpt['RCS06'],corr_pca_allpt['RCS07'],corr_pca_allpt['RCS08']], list(dict(sorted(ch_allpt.items())).values()), canonical_freq, ['Corr', 'Corr', 'Corr','Corr','Corr', 'Corr','Corr'], ['PSD vs PCA1 behavioral RCS02', 'PSD vs PCA1 behavioral RCS03', 'PSD vs PCA1 behavioral RCS04', 'PSD vs PCA1 behavioral RCS05', 'PSD vs PCA1 behavioral RCS06','PSD vs PCA1 behavioral RCS07','PSD vs PCA1 behavioral RCS08'], "07122026 FINAL PREPROC Masked Canonical chanel roi correlation till rcs08 - PCA behavioral 6 var comp1- new label - permutation ", nrows=2, ncols=3)
+# plot_heatmap_subplots([corr_pca2_allpt['RCS02'], corr_pca2_allpt['RCS03'], corr_pca2_allpt['RCS04'], corr_pca2_allpt['RCS05'], corr_pca2_allpt['RCS06'],corr_pca2_allpt['RCS07'],corr_pca2_allpt['RCS08']], list(dict(sorted(ch_allpt.items())).values()), canonical_freq, ['Corr', 'Corr','Corr','Corr', 'Corr','Corr','Corr'], ['PSD vs PCA2 behavioral RCS02', 'PSD vs PCA2 behavioral RCS03', 'PSD vs PCA2 behavioral RCS04', 'PSD vs PCA2 behavioral RCS05', 'PSD vs PCA2 behavioral RCS06','PSD vs PCA2 behavioral RCS07','PSD vs PCA2 behavioral RCS08'], "07122026 FINAL PREPROC Masked Canonical chanel roi correlation till rcs08 - PCA behavioral 6 var comp2 - new label - permutation ", nrows=2, ncols=3)
+
+# plot_heatmap_subplots([corr2_pca_allpt['RCS02'], corr2_pca_allpt['RCS03'], corr2_pca_allpt['RCS04'], corr2_pca_allpt['RCS05'], corr2_pca_allpt['RCS06'],corr2_pca_allpt['RCS07'],corr2_pca_allpt['RCS08']], list(dict(sorted(ch_allpt.items())).values()), freqs, ['Corr', 'Corr', 'Corr','Corr','Corr', 'Corr','Corr'], ['PSD vs PCA1 behavioral RCS02', 'PSD vs PCA1 behavioral RCS03', 'PSD vs PCA1 behavioral RCS04', 'PSD vs PCA1 behavioral RCS05', 'PSD vs PCA1 behavioral RCS06','PSD vs PCA1 behavioral RCS07','PSD vs PCA1 behavioral RCS08'], "07122026 FINAL PREPROC Masked all freq roi correlation till rcs08 - PCA behavioral 6 var comp1- new label - permutation ", nrows=2, ncols=3)
+# plot_heatmap_subplots([corr2_pca2_allpt['RCS02'], corr2_pca2_allpt['RCS03'], corr2_pca2_allpt['RCS04'], corr2_pca2_allpt['RCS05'], corr2_pca2_allpt['RCS06'],corr2_pca2_allpt['RCS07'],corr2_pca2_allpt['RCS08']], list(dict(sorted(ch_allpt.items())).values()), freqs, ['Corr', 'Corr','Corr','Corr', 'Corr','Corr','Corr'], ['PSD vs PCA2 behavioral RCS02', 'PSD vs PCA2 behavioral RCS03', 'PSD vs PCA2 behavioral RCS04', 'PSD vs PCA2 behavioral RCS05', 'PSD vs PCA2 behavioral RCS06','PSD vs PCA2 behavioral RCS07','PSD vs PCA2 behavioral RCS08'], "07122026 FINAL PREPROC Masked all freq roi correlation till rcs08 - PCA behavioral 6 var comp2 - new label - permutation ", nrows=2, ncols=3)
 
